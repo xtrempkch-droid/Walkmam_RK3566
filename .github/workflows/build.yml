@@ -25,7 +25,6 @@ jobs:
 
     - name: Fetch Sources (U-Boot, Kernel & RKBIN)
       run: |
-        # Clona o uboot, kernel e o repositório rkbin necessário para o ./make.sh do U-Boot
         git clone --depth 1 https://github.com/TheGammaSqueeze/jelos_rk3566-x55-uboot.git uboot
         git clone --depth 1 https://github.com/TheGammaSqueeze/jelos_rk3566-x55-kernel.git kernel
         git clone --depth 1 https://github.com/rockchip-linux/rkbin.git rkbin
@@ -38,14 +37,13 @@ jobs:
         export HOSTCFLAGS="-Wno-error -O2"
         export CFLAGS="-Wno-error"
 
-        # 1. Cria links simbólicos na raiz do uboot para satisfazer a checagem do make.sh
+        # Engana as verificações do make.sh da Rockchip apontando para o compilador do sistema
         ln -sf /usr/bin/aarch64-linux-gnu-gcc aarch64-linux-gnu-gcc
         ln -sf /usr/bin/aarch64-linux-gnu-gcc ./aarch64-linux-gnu-gcc
 
-        # 2. Garante permissão de execução no script
         chmod +x make.sh
 
-        # 3. Executa o make.sh forçando a variável CROSS_COMPILE do sistema
+        # Executa o make.sh usando o alvo x55 ou rk3566 com o toolchain do sistema
         if grep -q "x55" make.sh; then
           echo "--> Executando ./make.sh x55 com Toolchain do sistema"
           CROSS_COMPILE=aarch64-linux-gnu- ./make.sh x55
@@ -53,7 +51,6 @@ jobs:
           echo "--> Executando ./make.sh rk3566 com Toolchain do sistema"
           CROSS_COMPILE=aarch64-linux-gnu- ./make.sh rk3566
         fi
-        
 
     - name: Build Kernel
       run: |
@@ -63,6 +60,7 @@ jobs:
         export HOSTCFLAGS="-Wno-error -O2"
         export KCFLAGS="-Wno-error"
 
+        # Busca dinâmica filtrando por arquivos de configuração válidos (_defconfig)
         KERNEL_CONFIG_PATH=$(find arch/arm64/configs -maxdepth 1 -iname '*defconfig' \
           \( -iname '*rk3566*' -o -iname '*x55*' \) \
           2>/dev/null | sort | head -n 1)
@@ -82,12 +80,13 @@ jobs:
       run: |
         mkdir -p rootfs/{bin,sbin,dev,proc,sys,etc/init.d,mnt,usr/bin,usr/lib}
 
+        # Criando o script de inicialização do sistema
         cat << 'EOF' > rootfs/etc/init.d/rcS
         #!/bin/sh
         mount -t proc proc /proc
         mount -t sysfs sysfs /sys
         mount -t devtmpfs devtmpfs /dev
-        echo "Sistema RK3566 inicializado com sucesso!"
+        echo "Sistema Walkman RK3566 inicializado com sucesso!"
         EOF
 
         chmod +x rootfs/etc/init.d/rcS
@@ -95,13 +94,18 @@ jobs:
     - name: Prepare Artifacts
       run: |
         mkdir -p output
-        # Copia todos os binarios de boot gerados pelo make.sh do Rockchip
+        
+        # Coleta os binários de boot gerados pelo U-Boot/RKBIN
         cp uboot/*loader*.bin output/ 2>/dev/null || true
         cp uboot/*uboot*.bin output/ 2>/dev/null || true
         cp uboot/uboot.img output/ 2>/dev/null || true
         cp uboot/trust.img output/ 2>/dev/null || true
         cp uboot/idbloader.img output/ 2>/dev/null || true
+        
+        # Coleta a imagem do Kernel
         cp kernel/arch/arm64/boot/Image output/ 2>/dev/null || true
+        
+        # Coleta os Device Trees (.dtb)
         mkdir -p output/dtbs
         cp kernel/arch/arm64/boot/dts/rockchip/*.dtb output/dtbs/ 2>/dev/null || true
 
