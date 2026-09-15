@@ -38,16 +38,22 @@ jobs:
         export HOSTCFLAGS="-Wno-error -O2"
         export CFLAGS="-Wno-error"
 
+        # 1. Cria links simbólicos na raiz do uboot para satisfazer a checagem do make.sh
+        ln -sf /usr/bin/aarch64-linux-gnu-gcc aarch64-linux-gnu-gcc
+        ln -sf /usr/bin/aarch64-linux-gnu-gcc ./aarch64-linux-gnu-gcc
+
+        # 2. Garante permissão de execução no script
         chmod +x make.sh
-        
-        # Tenta o alvo especifico 'x55' ou fallback para 'rk3566' se x55 nao existir no script
+
+        # 3. Executa o make.sh forçando a variável CROSS_COMPILE do sistema
         if grep -q "x55" make.sh; then
-          echo "--> Executando ./make.sh x55"
-          ./make.sh x55
+          echo "--> Executando ./make.sh x55 com Toolchain do sistema"
+          CROSS_COMPILE=aarch64-linux-gnu- ./make.sh x55
         else
-          echo "--> Executando ./make.sh rk3566"
-          ./make.sh rk3566
+          echo "--> Executando ./make.sh rk3566 com Toolchain do sistema"
+          CROSS_COMPILE=aarch64-linux-gnu- ./make.sh rk3566
         fi
+        
 
     - name: Build Kernel
       run: |
