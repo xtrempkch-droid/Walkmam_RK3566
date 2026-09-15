@@ -23,6 +23,111 @@ jobs:
           python3 python3-pyelftools python3-setuptools device-tree-compiler \
           swig libelf-dev libgnutls28-dev
 
+    - name: Fetch Sources (U-Boot, Kernel & RKBIN)
+      run: |
+        # Clona o uboot, kernel e o repositório rkbin necessário para o ./make.sh do U-Boot
+        git clone --depth 1 https://github.com/TheGammaSqueeze/jelos_rk3566-x55-uboot.git uboot
+        git clone --depth 1 https://github.com/TheGammaSqueeze/jelos_rk3566-x55-kernel.git kernel
+        git clone --depth 1 https://github.com/rockchip-linux/rkbin.git rkbin
+
+    - name: Build U-Boot
+      run: |
+        cd uboot
+        export ARCH=arm64
+        export CROSS_COMPILE=aarch64-linux-gnu-
+        export HOSTCFLAGS="-Wno-error -O2"
+        export CFLAGS="-Wno-error"
+
+        chmod +x make.sh
+        
+        # Tenta o alvo especifico 'x55' ou fallback para 'rk3566' se x55 nao existir no script
+        if grep -q "x55" make.sh; then
+          echo "--> Executando ./make.sh x55"
+          ./make.sh x55
+        else
+          echo "--> Executando ./make.sh rk3566"
+          ./make.sh rk3566
+        fi
+
+    - name: Build Kernel
+      run: |
+        cd kernel
+        export ARCH=arm64
+        export CROSS_COMPILE=aarch64-linux-gnu-
+        export HOSTCFLAGS="-Wno-error -O2"
+        export KCFLAGS="-Wno-error"
+
+        KERNEL_CONFIG_PATH=$(find arch/arm64/configs -maxdepth 1 -iname '*defconfig' \
+          \( -iname '*rk3566*' -o -iname '*x55*' \) \
+          2>/dev/null | sort | head -n 1)
+
+        if [ -z "$KERNEL_CONFIG_PATH" ]; then
+          echo "--> Usando defconfig padrão como fallback."
+          KERNEL_CONFIG="defconfig"
+        else
+          KERNEL_CONFIG=$(basename "$KERNEL_CONFIG_PATH")
+        fi
+
+        echo "--> Usando Kernel Config: $KERNEL_CONFIG"
+        make "$KERNEL_CONFIG"
+        make -j"$(nproc)" Image dtbs modules
+
+    - name: Assemble RootFS Structure
+      run: |
+        mkdir -p rootfs/{bin,sbin,dev,proc,sys,etc/init.d,mnt,usr/bin,usr/lib}
+
+        cat << 'EOF' > rootfs/etc/init.d/rcS
+        #!/bin/sh
+        mount -t proc proc /proc
+        mount -t sysfs sysfs /sys
+        mount -t devtmpfs devtmpfs /dev
+        echo "Sistema RK3566 inicializado com sucesso!"
+        EOF
+
+        chmod +x rootfs/etc/init.d/rcS
+
+    - name: Prepare Artifacts
+      run: |
+        mkdir -p output
+        # Copia todos os binarios de boot gerados pelo make.sh do Rockchip
+        cp uboot/*loader*.bin output/ 2>/dev/null || true
+        cp uboot/*uboot*.bin output/ 2>/dev/null || true
+        cp uboot/uboot.img output/ 2>/dev/null || true
+        cp uboot/trust.img output/ 2>/dev/null || true
+        cp uboot/idbloader.img output/ 2>/dev/null || true
+        cp kernel/arch/arm64/boot/Image output/ 2>/dev/null || true
+        mkdir -p output/dtbs
+        cp kernel/arch/arm64/boot/dts/rockchip/*.dtb output/dtbs/ 2>/dev/null || true
+
+    - name: Upload Build Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: rk3566-build-output
+        path: output/name: Build Custom RK3566 OS
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-os:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Install Build Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+          bison flex libssl-dev bc libncurses-dev kmod u-boot-tools \
+          squashfs-tools genext2fs mtools dosfstools rsync git wget \
+          python3 python3-pyelftools python3-setuptools device-tree-compiler \
+          swig libelf-dev libgnutls28-dev
+
     - name: Fetch Sources (U-Boot & Kernel)
       run: |
         git clone --depth 1 https://github.com/TheGammaSqueeze/jelos_rk3566-x55-uboot.git uboot
