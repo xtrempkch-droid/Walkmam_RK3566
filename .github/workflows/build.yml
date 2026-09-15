@@ -34,23 +34,26 @@ jobs:
         cd uboot
         export ARCH=arm64
         export CROSS_COMPILE=aarch64-linux-gnu-
-        export HOSTCFLAGS="-Wno-error -O2"
-        export CFLAGS="-Wno-error"
 
-        # Linka todos os binários do toolchain aarch64 (gcc, ar, ld, nm, objcopy, etc) para a raiz do uboot
+        # Desativa a transformação de avisos em erros no GCC moderno
+        export HOSTCFLAGS="-Wno-error -O2"
+        export CFLAGS="-Wno-error -Wno-array-bounds -Wno-stringop-overflow"
+        export KCFLAGS="-Wno-error -Wno-array-bounds -Wno-stringop-overflow"
+
+        # Linka a cadeia de ferramentas completa para o diretório
         for tool in /usr/bin/aarch64-linux-gnu-*; do
           ln -sf "$tool" "$(basename $tool)"
         done
 
         chmod +x make.sh
 
-        # Executa o make.sh apontando para o toolchain completo
+        # Executa desativando a flag -Werror passada pelo próprio script/makefiles
         if grep -q "x55" make.sh; then
-          echo "--> Executando ./make.sh x55 com Toolchain do sistema"
-          CROSS_COMPILE=aarch64-linux-gnu- ./make.sh x55
+          echo "--> Executando ./make.sh x55 com Werror desativado"
+          CROSS_COMPILE=aarch64-linux-gnu- KCFLAGS="-Wno-error" CFLAGS="-Wno-error" ./make.sh x55
         else
-          echo "--> Executando ./make.sh rk3566 com Toolchain do sistema"
-          CROSS_COMPILE=aarch64-linux-gnu- ./make.sh rk3566
+          echo "--> Executando ./make.sh rk3566 com Werror desativado"
+          CROSS_COMPILE=aarch64-linux-gnu- KCFLAGS="-Wno-error" CFLAGS="-Wno-error" ./make.sh rk3566
         fi
         
 
