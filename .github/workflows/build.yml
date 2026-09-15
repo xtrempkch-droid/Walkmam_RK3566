@@ -16,9 +16,12 @@ jobs:
     - name: Install Build Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
-          bison flex libssl-dev bc libncurses5-dev libncursesw5-dev kmod u-boot-tools \
-          squashfs-tools genext2fs mtools dosfstools rsync git wget python3
+        sudo apt-get install -y \
+          build-essential gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+          bison flex libssl-dev bc libncurses-dev kmod u-boot-tools \
+          squashfs-tools genext2fs mtools dosfstools rsync git wget \
+          python3 python3-pyelftools python3-setuptools device-tree-compiler \
+          swig libelf-dev libgnutls28-dev
 
     - name: Fetch Sources (U-Boot & Kernel)
       run: |
@@ -30,13 +33,20 @@ jobs:
         cd uboot
         export ARCH=arm64
         export CROSS_COMPILE=aarch64-linux-gnu-
-        # Procura o arquivo defconfig correto para rk3566 no diretório de configs
-        UBOOT_CONFIG=$(ls configs/*rk3566* 2>/dev/null | head -n 1 | xargs -n1 basename)
+        # Desativa avisos estritos do GCC 12/13/14 para não quebrar no kconfig/symbol.c
+        export HOSTCFLAGS="-Wno-error -O2"
+        export CFLAGS="-Wno-error"
+        
+        # Filtra estritamente por arquivos *_defconfig válidos no diretório configs/
+        UBOOT_CONFIG=$(basename $(ls configs/*rk3566*_defconfig configs/*x55*_defconfig configs/*rg3566*_defconfig 2>/dev/null | head -n 1))
+        
         if [ -z "$UBOOT_CONFIG" ]; then
-          # Fallback caso não ache com a palavra rk3566
-          UBOOT_CONFIG="evb-rk3566_defconfig"
+          echo "Nenhum defconfig específico encontrado. Listando configs disponíveis:"
+          ls configs/
+          exit 1
         fi
-        echo "Usando U-Boot Config: $UBOOT_CONFIG"
+        
+        echo "--> Usando U-Boot Config: $UBOOT_CONFIG"
         make $UBOOT_CONFIG
         make -j$(nproc)
 
@@ -45,11 +55,47 @@ jobs:
         cd kernel
         export ARCH=arm64
         export CROSS_COMPILE=aarch64-linux-gnu-
-        # Procura o arquivo defconfig do rk3566 no kernel
-        KERNEL_CONFIG=$(ls arch/arm64/configs/*rk3566* arch/arm64/configs/*x55* 2>/dev/null | head -n 1 | xargs -n1 basename)
+        export HOSTCFLAGS="-Wno-error -O2"
+        export KCFLAGS="-Wno-error"
+        
+        # Procura o defconfig específico do Kernel do RK3566/X55
+        KERNEL_CONFIG=$(basename $(ls arch/arm64/configs/*rk3566*_defconfig arch/arm64/configs/*x55*_defconfig 2>/dev/null | head -n 1))
+        
         if [ -z "$KERNEL_CONFIG" ]; then
+          echo "Defconfig não encontrado na busca avançada. Usando defconfig padrão."
           KERNEL_CONFIG="defconfig"
         fi
-        echo "Usando Kernel Config: $KERNEL_CONFIG"
+        
+        echo "--> Usando Kernel Config: $KERNEL_CONFIG"
         make $KERNEL_CONFIG
         make -j$(nproc) Image dtbs modules
+
+    - name: Assemble RootFS Structure
+      run: |
+        mkdir -p rootfs/{bin,sbin,dev,proc,sys,etc/init.d,mnt,usr/bin,usr/lib}
+        
+        # Script de inicialização minimalista
+        cat << 'EOF' > rootfs/etc/init.d/rcS
+        #!/bin/sh
+        mount -t proc proc /proc
+        mount -t sysfs sysfs /sys
+        mount -t devtmpfs devtmpfs /dev
+        echo "Sistema RK3566 inicializado com sucesso!"
+        EOF
+        
+        chmod +x rootfs/etc/init.d/rcS
+
+    - name: Prepare Artifacts
+      run: |
+        mkdir -p output
+        [ -f uboot/u-boot.bin ] && cp uboot/u-boot.bin output/ || true
+        [ -f uboot/idbloader.img ] && cp uboot/idbloader.img output/ || true
+        [ -f kernel/arch/arm64/boot/Image ] && cp kernel/arch/arm64/boot/Image output/ || true
+        mkdir -p output/dtbs
+        cp kernel/arch/arm64/boot/dts/rockchip/*.dtb output/dtbs/ 2>/dev/null || true
+
+    - name: Upload Build Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: rk3566-build-output
+        path: output/
