@@ -36,19 +36,24 @@ jobs:
         # Desativa avisos estritos do GCC 12/13/14 para não quebrar no kconfig/symbol.c
         export HOSTCFLAGS="-Wno-error -O2"
         export CFLAGS="-Wno-error"
-        
-        # Filtra estritamente por arquivos *_defconfig válidos no diretório configs/
-        UBOOT_CONFIG=$(basename $(ls configs/*rk3566*_defconfig configs/*x55*_defconfig configs/*rg3566*_defconfig 2>/dev/null | head -n 1))
-        
-        if [ -z "$UBOOT_CONFIG" ]; then
-          echo "Nenhum defconfig específico encontrado. Listando configs disponíveis:"
-          ls configs/
+
+        # Busca ampla e sem diferenciar maiúsc/minúsc por qualquer defconfig relacionado
+        UBOOT_CONFIG_PATH=$(find configs -maxdepth 1 -iname '*defconfig' \
+          \( -iname '*rk3566*' -o -iname '*x55*' -o -iname '*rg3566*' -o -iname '*powkiddy*' \) \
+          2>/dev/null | sort | head -n 1)
+
+        if [ -z "$UBOOT_CONFIG_PATH" ]; then
+          echo "Nenhum defconfig específico encontrado. Listando TODOS os defconfigs disponíveis:"
+          find configs -maxdepth 1 -iname '*defconfig' | sort
+          echo "----"
+          echo "Ajuste o filtro do step acima com um dos nomes listados."
           exit 1
         fi
-        
+
+        UBOOT_CONFIG=$(basename "$UBOOT_CONFIG_PATH")
         echo "--> Usando U-Boot Config: $UBOOT_CONFIG"
-        make $UBOOT_CONFIG
-        make -j$(nproc)
+        make "$UBOOT_CONFIG"
+        make -j"$(nproc)"
 
     - name: Build Kernel
       run: |
@@ -57,23 +62,28 @@ jobs:
         export CROSS_COMPILE=aarch64-linux-gnu-
         export HOSTCFLAGS="-Wno-error -O2"
         export KCFLAGS="-Wno-error"
-        
-        # Procura o defconfig específico do Kernel do RK3566/X55
-        KERNEL_CONFIG=$(basename $(ls arch/arm64/configs/*rk3566*_defconfig arch/arm64/configs/*x55*_defconfig 2>/dev/null | head -n 1))
-        
-        if [ -z "$KERNEL_CONFIG" ]; then
-          echo "Defconfig não encontrado na busca avançada. Usando defconfig padrão."
+
+        KERNEL_CONFIG_PATH=$(find arch/arm64/configs -maxdepth 1 -iname '*defconfig' \
+          \( -iname '*rk3566*' -o -iname '*x55*' \) \
+          2>/dev/null | sort | head -n 1)
+
+        if [ -z "$KERNEL_CONFIG_PATH" ]; then
+          echo "Defconfig específico não encontrado. Listando defconfigs disponíveis:"
+          find arch/arm64/configs -maxdepth 1 -iname '*defconfig' | sort
+          echo "--> Usando defconfig padrão como fallback."
           KERNEL_CONFIG="defconfig"
+        else
+          KERNEL_CONFIG=$(basename "$KERNEL_CONFIG_PATH")
         fi
-        
+
         echo "--> Usando Kernel Config: $KERNEL_CONFIG"
-        make $KERNEL_CONFIG
-        make -j$(nproc) Image dtbs modules
+        make "$KERNEL_CONFIG"
+        make -j"$(nproc)" Image dtbs modules
 
     - name: Assemble RootFS Structure
       run: |
         mkdir -p rootfs/{bin,sbin,dev,proc,sys,etc/init.d,mnt,usr/bin,usr/lib}
-        
+
         # Script de inicialização minimalista
         cat << 'EOF' > rootfs/etc/init.d/rcS
         #!/bin/sh
@@ -82,7 +92,7 @@ jobs:
         mount -t devtmpfs devtmpfs /dev
         echo "Sistema RK3566 inicializado com sucesso!"
         EOF
-        
+
         chmod +x rootfs/etc/init.d/rcS
 
     - name: Prepare Artifacts
