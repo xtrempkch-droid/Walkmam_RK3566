@@ -76,3 +76,11 @@ jobs:
         with:
           name: rocknix-sdcard-image
           path: rocknix-sdcard.img.xz
+          
+      - name: Criar Release no GitHub e Anexar Imagem
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: rocknix-sdcard.img.xz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
