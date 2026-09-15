@@ -3,7 +3,7 @@ name: Build ROCKNIX Bootable SD Image
 on:
   push:
     tags:
-      - 'v*' # Dispara automaticamente ao criar tags como v1.0.0, v1.0.1, etc.
+      - 'v*'
   workflow_dispatch:
     inputs:
       tag_name:
@@ -12,7 +12,7 @@ on:
         default: 'v1.0.0'
 
 permissions:
-  contents: write # Permissão necessária para criar a Release e enviar o arquivo
+  contents: write
 
 jobs:
   build-and-release:
@@ -25,43 +25,56 @@ jobs:
       - name: Instalar Dependências do Sistema
         run: |
           sudo apt-get update
-          sudo apt-get install -y fdisk dosfstools e2fsprogs coreutils zip xz-utils
+          sudo apt-get install -y parted dosfstools e2fsprogs coreutils xz-utils
 
       - name: Gerar Imagem do Cartão SD
         run: |
-          # 1. Criar arquivo de imagem vazio (4GB)
+          set -e # Força o GitHub Actions a parar imediatamente se houver qualquer erro
+
+          echo "=== 1. Criando imagem vazia de 4GB ==="
           dd if=/dev/zero of=rocknix-sdcard.img bs=1M count=4000 status=progress
 
-          # 2. Configurar dispositivo Loopback
+          echo "=== 2. Configurando Loopback ==="
           LOOPDEV=$(sudo losetup -fP --show rocknix-sdcard.img)
-          echo "Dispositivo Loopback configurado em: $LOOPDEV"
+          echo "Dispositivo Loopback: $LOOPDEV"
 
-          # 3. Criar a Tabela de Partições (MBR)
-          (
-            echo o     # Nova MBR
-            echo n; echo p; echo 1; echo 32768; echo +512M; echo t; echo c
-            echo n; echo p; echo 2; echo ; echo 
-            echo w
-          ) | sudo fdisk $LOOPDEV
+          echo "=== 3. Criando Tabela de Partições MBR com Parted ==="
+          sudo parted -s $LOOPDEV mklabel msdos
+          # Inicia a partição BOOT exatamente em 16MiB (setor 32768 do Rockchip)
+          sudo parted -s $LOOPDEV mkpart primary fat32 16MiB 528MiB
+          sudo parted -s $LOOPDEV mkpart primary ext4 528MiB 100%
+          
+          # Sincroniza e aguarda o sistema criar as partições virtuais (p1 e p2)
+          sudo udevadm settle
+          sleep 3
 
-          sudo partprobe $LOOPDEV
-          sleep 2
-
-          # 4. Formatar as Partições
+          echo "=== 4. Formatando as Partições ==="
           sudo mkfs.vfat -F 32 -n "BOOT" ${LOOPDEV}p1
           sudo mkfs.ext4 -F -L "ROOTFS" ${LOOPDEV}p2
 
-          # 5. Gravando Loader e U-Boot nos Offsets do RK356X
+          echo "=== 5. Gravando Loader e U-Boot ==="
+          # Verifica se o arquivo loader existe no repositório antes de gravar
+          if [ ! -f "rk356x_loader_v1.26.114.bin" ]; then
+            echo "ERRO FATAL: Arquivo rk356x_loader_v1.26.114.bin não encontrado!"
+            exit 1
+          fi
           sudo dd if=rk356x_loader_v1.26.114.bin of=$LOOPDEV seek=64 conv=notrunc
           sudo dd if=uboot.img of=$LOOPDEV seek=16384 conv=notrunc
 
-          # 6. Montar partição BOOT e copiar Kernel, DTB e extlinux.conf
+          echo "=== 6. Montando BOOT e Copiando Arquivos ==="
+          if [ ! -f "Image" ]; then
+            echo "ERRO FATAL: O arquivo do Kernel 'Image' não foi encontrado no repositório!"
+            exit 1
+          fi
+
           MOUNT_DIR="/mnt/sd_boot"
           sudo mkdir -p $MOUNT_DIR
           sudo mount ${LOOPDEV}p1 $MOUNT_DIR
 
           sudo cp Image $MOUNT_DIR/
-          sudo cp *.dtb $MOUNT_DIR/ 2>/dev/null || true
+          
+          # Tenta copiar o arquivo .dtb, se não existir exibe um aviso mas não quebra o script
+          sudo cp *.dtb $MOUNT_DIR/ 2>/dev/null || echo "Aviso: Nenhum arquivo .dtb encontrado para copiar."
 
           sudo mkdir -p $MOUNT_DIR/extlinux
           sudo bash -c "cat << 'EOF' > $MOUNT_DIR/extlinux/extlinux.conf
@@ -74,18 +87,29 @@ jobs:
           sync
           sudo umount $MOUNT_DIR
           sudo losetup -d $LOOPDEV
+          echo "=== Imagem montada com sucesso! ==="
 
       - name: Compactar Imagem (.img.xz)
         run: |
-          # Compactação de alta eficiência (mantém o arquivo pequeno para download)
+          set -e
+          echo "Compactando a imagem (isso pode levar alguns minutos)..."
           xz -z -3 -T 0 rocknix-sdcard.img
+
+      - name: Definir Variável Segura para a Release
+        id: release_vars
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "RELEASE_TAG=${{ github.event.inputs.tag_name }}" >> $GITHUB_ENV
+          else
+            echo "RELEASE_TAG=${{ github.ref_name }}" >> $GITHUB_ENV
+          fi
 
       - name: Publicar Imagem na aba Releases
         uses: softprops/action-gh-release@v1
         with:
           files: rocknix-sdcard.img.xz
-          tag_name: ${{ github.ref_name != '' && github.ref_name || inputs.tag_name }}
-          name: Release ${{ github.ref_name != '' && github.ref_name || inputs.tag_name }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: Release ${{ env.RELEASE_TAG }}
           draft: false
           prerelease: false
         env:
