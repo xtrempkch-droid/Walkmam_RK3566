@@ -37,13 +37,14 @@ jobs:
         export HOSTCFLAGS="-Wno-error -O2"
         export CFLAGS="-Wno-error"
 
-        # Engana as verificações do make.sh da Rockchip apontando para o compilador do sistema
-        ln -sf /usr/bin/aarch64-linux-gnu-gcc aarch64-linux-gnu-gcc
-        ln -sf /usr/bin/aarch64-linux-gnu-gcc ./aarch64-linux-gnu-gcc
+        # Linka todos os binários do toolchain aarch64 (gcc, ar, ld, nm, objcopy, etc) para a raiz do uboot
+        for tool in /usr/bin/aarch64-linux-gnu-*; do
+          ln -sf "$tool" "$(basename $tool)"
+        done
 
         chmod +x make.sh
 
-        # Executa o make.sh usando o alvo x55 ou rk3566 com o toolchain do sistema
+        # Executa o make.sh apontando para o toolchain completo
         if grep -q "x55" make.sh; then
           echo "--> Executando ./make.sh x55 com Toolchain do sistema"
           CROSS_COMPILE=aarch64-linux-gnu- ./make.sh x55
@@ -51,6 +52,7 @@ jobs:
           echo "--> Executando ./make.sh rk3566 com Toolchain do sistema"
           CROSS_COMPILE=aarch64-linux-gnu- ./make.sh rk3566
         fi
+        
 
     - name: Build Kernel
       run: |
