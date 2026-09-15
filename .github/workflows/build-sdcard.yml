@@ -1,0 +1,78 @@
+name: Build ROCKNIX Bootable SD Image
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch: # Permite rodar manualmente na aba Actions
+
+jobs:
+  build-image:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do Repositório
+        uses: actions/checkout@v4
+
+      - name: Instalar Dependências de Sistema
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fdisk dosfstools e2fsprogs coreutils zip xz-utils
+
+      - name: Gerar Imagem do Cartão SD
+        run: |
+          # 1. Criar arquivo de imagem vazio (4GB)
+          dd if=/dev/zero of=rocknix-sdcard.img bs=1M count=4000 status=progress
+
+          # 2. Configurar o dispositivo Loopback no Linux do Runner
+          LOOPDEV=$(sudo losetup -fP --show rocknix-sdcard.img)
+          echo "Dispositivo Loopback: $LOOPDEV"
+
+          # 3. Criar a Tabela MBR e Partições
+          (
+            echo o     # Nova MBR
+            echo n; echo p; echo 1; echo 32768; echo +512M; echo t; echo c
+            echo n; echo p; echo 2; echo ; echo 
+            echo w
+          ) | sudo fdisk $LOOPDEV
+
+          sudo partprobe $LOOPDEV
+          sleep 2
+
+          # 4. Formatar as Partições
+          sudo mkfs.vfat -F 32 -n "BOOT" ${LOOPDEV}p1
+          sudo mkfs.ext4 -F -L "ROOTFS" ${LOOPDEV}p2
+
+          # 5. Gravando Loader e U-Boot nos Offsets do Rockchip
+          sudo dd if=rk356x_loader_v1.26.114.bin of=$LOOPDEV seek=64 conv=notrunc
+          sudo dd if=uboot.img of=$LOOPDEV seek=16384 conv=notrunc
+
+          # 6. Montar e copiar Kernel, DTB e extlinux.conf
+          MOUNT_DIR="/mnt/sd_boot"
+          sudo mkdir -p $MOUNT_DIR
+          sudo mount ${LOOPDEV}p1 $MOUNT_DIR
+
+          sudo cp Image $MOUNT_DIR/
+          sudo cp *.dtb $MOUNT_DIR/ 2>/dev/null || true
+
+          sudo mkdir -p $MOUNT_DIR/extlinux
+          sudo bash -c "cat << 'EOF' > $MOUNT_DIR/extlinux/extlinux.conf
+          LABEL ROCKNIX
+            KERNEL /Image
+            FDT /seu_arquivo.dtb
+            APPEND console=ttyS2,1500000 root=/dev/mmcblk0p2 rw rootwait earlycon
+          EOF"
+
+          sync
+          sudo umount $MOUNT_DIR
+          sudo losetup -d $LOOPDEV
+
+      - name: Compactar a Imagem Final
+        run: |
+          xz -z -3 -T 0 rocknix-sdcard.img
+
+      - name: Upload da Imagem Pronta (Artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: rocknix-sdcard-image
+          path: rocknix-sdcard.img.xz
