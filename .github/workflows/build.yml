@@ -30,32 +30,26 @@ jobs:
         cd uboot
         export ARCH=arm64
         export CROSS_COMPILE=aarch64-linux-gnu-
-        make rk3566_defconfig
+        # Procura o arquivo defconfig correto para rk3566 no diretório de configs
+        UBOOT_CONFIG=$(ls configs/*rk3566* 2>/dev/null | head -n 1 | xargs -n1 basename)
+        if [ -z "$UBOOT_CONFIG" ]; then
+          # Fallback caso não ache com a palavra rk3566
+          UBOOT_CONFIG="evb-rk3566_defconfig"
+        fi
+        echo "Usando U-Boot Config: $UBOOT_CONFIG"
+        make $UBOOT_CONFIG
         make -j$(nproc)
 
-    - name: Build Kernel (rk3566-x55)
+    - name: Build Kernel
       run: |
         cd kernel
         export ARCH=arm64
         export CROSS_COMPILE=aarch64-linux-gnu-
-        make rk3566_x55_defconfig
+        # Procura o arquivo defconfig do rk3566 no kernel
+        KERNEL_CONFIG=$(ls arch/arm64/configs/*rk3566* arch/arm64/configs/*x55* 2>/dev/null | head -n 1 | xargs -n1 basename)
+        if [ -z "$KERNEL_CONFIG" ]; then
+          KERNEL_CONFIG="defconfig"
+        fi
+        echo "Usando Kernel Config: $KERNEL_CONFIG"
+        make $KERNEL_CONFIG
         make -j$(nproc) Image dtbs modules
-
-    - name: Assemble Minimal RootFS & MPV Setup
-      run: |
-        mkdir -p rootfs/{bin,sbin,dev,proc,sys,etc,mnt,usr/bin}
-        # Instalação das dependências e binário mpv configurado para DRM/KMS
-        echo "#!/bin/sh" > rootfs/etc/init.d/rcS
-        echo "mount -t proc proc /proc" >> rootfs/etc/init.d/rcS
-        echo "mount -t sysfs sysfs /sys" >> rootfs/etc/init.d/rcS
-        echo "mpv --gpu-context=drm --vo=gpu --hwdec=auto /mnt/media/" >> rootfs/etc/init.d/rcS
-        chmod +x rootfs/etc/init.d/rcS
-
-    - name: Upload Build Artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: rk3566-kernel-uboot
-        path: |
-          kernel/arch/arm64/boot/Image
-          kernel/arch/arm64/boot/dts/rockchip/*.dtb
-          uboot/u-boot.bin
