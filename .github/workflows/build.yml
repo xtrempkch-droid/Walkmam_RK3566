@@ -79,35 +79,37 @@ jobs:
         ./scripts/config --disable CONFIG_ERROR_ON_WARNING || true
         make olddefconfig
 
-        make -j"$(nproc)" KCFLAGS="-Wno-error -Wno-enum-int-mismatch" Image dtbs modules
+        # Compila explicitamente a imagem do Kernel, modulos e todos os DTBs
+        make -j"$(nproc)" KCFLAGS="-Wno-error -Wno-enum-int-mismatch" Image modules
+        make -j"$(nproc)" KCFLAGS="-Wno-error -Wno-enum-int-mismatch" dtbs
 
     - name: Assemble RootFS Structure
       run: |
         mkdir -p rootfs/{bin,sbin,dev,proc,sys,etc/init.d,mnt,usr/bin,usr/lib,boot}
 
-        # Instala os modulos do Kernel compilados dentro do RootFS
+        # Instala os modulos compilados dentro do RootFS
         cd kernel
         make INSTALL_MOD_PATH=../rootfs modules_install
         cd ..
 
-        # Instala o BusyBox basico se necessario ou cria o script de inicializacao
+        # Script de inicializacao basico
         cat << 'EOF' > rootfs/etc/init.d/rcS
         #!/bin/sh
         mount -t proc proc /proc
         mount -t sysfs sysfs /sys
         mount -t devtmpfs devtmpfs /dev
-        echo "Sistema Walkman RK3566 inicializado com sucesso!"
+        echo "Sistema RK3566 inicializado com sucesso!"
         EOF
 
         chmod +x rootfs/etc/init.d/rcS
 
     - name: Create SD Card Image (.img)
       run: |
-        sudo bash -c '
+        sudo bash << 'EOF'
         set -e
 
         IMAGE_NAME="rk3566-sdcard.img"
-        IMAGE_SIZE_MB=1024 # Imagem de 1GB (Ajuste conforme necessario)
+        IMAGE_SIZE_MB=1024
 
         echo "--> Criando ficheiro de imagem vazio..."
         dd if=/dev/zero of=${IMAGE_NAME} bs=1M count=${IMAGE_SIZE_MB} status=progress
@@ -117,7 +119,7 @@ jobs:
         parted -s ${IMAGE_NAME} mkpart primary fat32 16MiB 256MiB
         parted -s ${IMAGE_NAME} mkpart primary ext4 256MiB 100%
 
-        echo "--> Mapeando partiçoes para Loop Devices..."
+        echo "--> Mapeando particoes para Loop Devices..."
         LOOP_DEV=$(losetup -fP --show ${IMAGE_NAME})
         BOOT_DEV="${LOOP_DEV}p1"
         ROOT_DEV="${LOOP_DEV}p2"
@@ -126,7 +128,7 @@ jobs:
         mkfs.vfat -F 32 -n "BOOT" ${BOOT_DEV}
         mkfs.ext4 -F -L "ROOTFS" ${ROOT_DEV}
 
-        echo "--> Gravando o Bootloader do Rockchip nos setores iniciais (Offset)..."
+        echo "--> Gravando Bootloader do Rockchip nos setores brutos..."
         if [ -f uboot/idbloader.img ]; then
           dd if=uboot/idbloader.img of=${LOOP_DEV} seek=64 conv=notrunc
         fi
@@ -137,18 +139,20 @@ jobs:
           dd if=uboot/trust.img of=${LOOP_DEV} seek=24576 conv=notrunc
         fi
 
-        echo "--> Montando particoes para copiar os ficheiros..."
+        echo "--> Montando particoes..."
         mkdir -p /mnt/boot /mnt/rootfs
         mount ${BOOT_DEV} /mnt/boot
         mount ${ROOT_DEV} /mnt/rootfs
 
-        echo "--> Copiando Kernel e DTB para a particao BOOT..."
+        echo "--> Copiando Kernel e Device Trees..."
         cp kernel/arch/arm64/boot/Image /mnt/boot/
         mkdir -p /mnt/boot/dtbs
-        cp kernel/arch/arm64/boot/dts/rockchip/*.dtb /mnt/boot/
-        cp kernel/arch/arm64/boot/dts/rockchip/*.dtb /mnt/boot/dtbs/ 2>/dev/null || true
 
-        # Criar script de boot (extlinux.conf) para o U-Boot encontrar o Kernel
+        # Busca dinamica por todos os arquivos .dtb gerados
+        find kernel/arch/arm64/boot/dts/ -type f -name "*.dtb" -exec cp {} /mnt/boot/ \;
+        find kernel/arch/arm64/boot/dts/ -type f -name "*.dtb" -exec cp {} /mnt/boot/dtbs/ \;
+
+        echo "--> Criando arquivo de configuracao do U-Boot (extlinux.conf)..."
         mkdir -p /mnt/boot/extlinux
         cat << "BOOTCFG" > /mnt/boot/extlinux/extlinux.conf
         LABEL CustomOS
@@ -157,7 +161,7 @@ jobs:
             APPEND console=ttyS2,1500000n8 root=/dev/mmcblk0p2 rw rootwait earlycon
         BOOTCFG
 
-        echo "--> Copiando sistema de ficheiros para a particao ROOTFS..."
+        echo "--> Copiando arquivos do RootFS..."
         cp -a rootfs/* /mnt/rootfs/
 
         echo "--> Desmontando e limpando..."
@@ -165,9 +169,9 @@ jobs:
         umount /mnt/rootfs
         losetup -d ${LOOP_DEV}
 
-        echo "--> Compactando imagem final para poupar espaco..."
+        echo "--> Compactando imagem final..."
         gzip -f ${IMAGE_NAME}
-        '
+        EOF
 
     - name: Prepare Output Directory
       run: |
