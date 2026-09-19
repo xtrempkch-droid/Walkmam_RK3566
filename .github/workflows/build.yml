@@ -1,4 +1,4 @@
-name: Build Custom RK3566 OS
+name: Build Kodi Dedicated RK3566 OS
 
 on:
   push:
@@ -21,7 +21,8 @@ jobs:
           bison flex libssl-dev bc libncurses-dev kmod u-boot-tools \
           squashfs-tools genext2fs mtools dosfstools rsync git wget \
           python3 python3-pyelftools python3-setuptools device-tree-compiler \
-          swig libelf-dev libgnutls28-dev parted kpartx e2fsprogs
+          swig libelf-dev libgnutls28-dev parted kpartx e2fsprogs \
+          qemu-user-static debootstrap
 
     - name: Fetch Sources (U-Boot, Kernel & RKBIN)
       run: |
@@ -79,37 +80,73 @@ jobs:
         ./scripts/config --disable CONFIG_ERROR_ON_WARNING || true
         make olddefconfig
 
-        # Compila explicitamente a imagem do Kernel, modulos e todos os DTBs
+        # Compila a imagem do Kernel, modulos e Device Trees
         make -j"$(nproc)" KCFLAGS="-Wno-error -Wno-enum-int-mismatch" Image modules
         make -j"$(nproc)" KCFLAGS="-Wno-error -Wno-enum-int-mismatch" dtbs
 
-    - name: Assemble RootFS Structure
+    - name: Build Kodi RootFS (ARM64 Debian Base)
       run: |
-        mkdir -p rootfs/{bin,sbin,dev,proc,sys,etc/init.d,mnt,usr/bin,usr/lib,boot}
+        echo "--> Criando RootFS base Debian ARM64 para o Kodi..."
+        sudo debootstrap --arch=arm64 --foreign bookworm rootfs http://deb.debian.org/debian/
+        sudo cp /usr/bin/qemu-aarch64-static rootfs/usr/bin/
+        sudo chroot rootfs /debootstrap/debootstrap --second-stage
 
-        # Instala os modulos compilados dentro do RootFS
+        echo "--> Instalando Kodi e dependencias de Video/Audio..."
+        sudo chroot rootfs bash -c '
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            kodi \
+            kodi-inputstream-adaptive \
+            kodi-peripheral-joystick \
+            alsa-utils \
+            dbus \
+            udev \
+            xorg \
+            xserver-xorg-legacy \
+            pulseaudio \
+            mesa-utils \
+            ca-certificates \
+            locales
+
+          # Permite execucao do servidor grafico sem restricao de utilizador
+          echo "allowed_users=anybody" > /etc/X11/Xwrapper.config
+        '
+
+        echo "--> Instalando modulos do Kernel no RootFS..."
         cd kernel
-        make INSTALL_MOD_PATH=../rootfs modules_install
+        sudo make INSTALL_MOD_PATH=../rootfs modules_install
         cd ..
 
-        # Script de inicializacao basico
-        cat << 'EOF' > rootfs/etc/init.d/rcS
+        echo "--> Configurando arranque automatico do Kodi..."
+        sudo bash -c 'cat << "EOF" > rootfs/etc/init.d/rcS
         #!/bin/sh
         mount -t proc proc /proc
         mount -t sysfs sysfs /sys
         mount -t devtmpfs devtmpfs /dev
-        echo "Sistema RK3566 inicializado com sucesso!"
-        EOF
 
-        chmod +x rootfs/etc/init.d/rcS
+        /etc/init.d/udev start 2>/dev/null || udevd --daemon
+        udevadm trigger
+
+        echo "A iniciar o Kodi Media Center..."
+        export HOME=/root
+        export USER=root
+
+        while true; do
+            kodi-standalone -- -- -nocursor || kodi
+            sleep 2
+        done
+        EOF'
+
+        sudo chmod +x rootfs/etc/init.d/rcS
 
     - name: Create SD Card Image (.img)
       run: |
         sudo bash << 'EOF'
         set -e
 
-        IMAGE_NAME="rk3566-sdcard.img"
-        IMAGE_SIZE_MB=1024
+        IMAGE_NAME="rk3566-kodi-sdcard.img"
+        IMAGE_SIZE_MB=2560 # 2.5 GB para comportar o Debian e o Kodi
 
         echo "--> Criando ficheiro de imagem vazio..."
         dd if=/dev/zero of=${IMAGE_NAME} bs=1M count=${IMAGE_SIZE_MB} status=progress
@@ -148,17 +185,16 @@ jobs:
         cp kernel/arch/arm64/boot/Image /mnt/boot/
         mkdir -p /mnt/boot/dtbs
 
-        # Busca dinamica por todos os arquivos .dtb gerados
         find kernel/arch/arm64/boot/dts/ -type f -name "*.dtb" -exec cp {} /mnt/boot/ \;
         find kernel/arch/arm64/boot/dts/ -type f -name "*.dtb" -exec cp {} /mnt/boot/dtbs/ \;
 
         echo "--> Criando arquivo de configuracao do U-Boot (extlinux.conf)..."
         mkdir -p /mnt/boot/extlinux
         cat << "BOOTCFG" > /mnt/boot/extlinux/extlinux.conf
-        LABEL CustomOS
+        LABEL KodiOS
             KERNEL /Image
             FDT /rk3566-powkiddy-x35h.dtb
-            APPEND console=ttyS2,1500000n8 root=/dev/mmcblk0p2 rw rootwait earlycon
+            APPEND console=ttyS2,1500000n8 root=/dev/mmcblk0p2 rw rootwait earlycon quiet
         BOOTCFG
 
         echo "--> Copiando arquivos do RootFS..."
@@ -176,10 +212,10 @@ jobs:
     - name: Prepare Output Directory
       run: |
         mkdir -p output
-        mv rk3566-sdcard.img.gz output/
+        mv rk3566-kodi-sdcard.img.gz output/
 
     - name: Upload SD Card Image Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: rk3566-sdcard-image
-        path: output/rk3566-sdcard.img.gz
+        name: rk3566-kodi-sdcard-image
+        path: output/rk3566-kodi-sdcard.img.gz
