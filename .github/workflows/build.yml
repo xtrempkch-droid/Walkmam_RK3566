@@ -114,22 +114,24 @@ jobs:
           git apply --reject --whitespace=fix "$p" || echo "!!! Falhou ao aplicar $p, verifique manualmente (pode já não bater com esta versão do kernel)."
         done
 
-        echo "--> Copiando .dts/.dtsi próprios da X35S (não existem em mainline)..."
+        echo "--> Garantindo que todo .dts novo (via patch ou cópia direta) está registrado no Makefile..."
+        # Copia primeiro os .dts/.dtsi que vieram soltos (não via patch)
         if ls ../rocknix-dts/*.dts* >/dev/null 2>&1; then
           cp ../rocknix-dts/*.dts* arch/arm64/boot/dts/rockchip/
-          for dtsfile in ../rocknix-dts/*.dts; do
-            [ -f "$dtsfile" ] || continue
-            base=$(basename "$dtsfile" .dts)
-            MAKEFILE="arch/arm64/boot/dts/rockchip/Makefile"
-            if ! grep -q "${base}.dtb" "$MAKEFILE"; then
-              echo "--> Registrando ${base}.dtb no Makefile do rockchip"
-              echo "dtb-\$(CONFIG_ARCH_ROCKCHIP) += ${base}.dtb" >> "$MAKEFILE"
-            fi
-          done
-        else
-          echo "!!! Nenhum .dts/.dtsi específico de X35S encontrado no repositório da ROCKNIX."
-          echo "!!! Verifique manualmente rocknix-src (pode estar num caminho não previsto pela busca)."
         fi
+
+        MAKEFILE="arch/arm64/boot/dts/rockchip/Makefile"
+        for dtsfile in arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35*.dts \
+                       arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x55.dts; do
+          [ -f "$dtsfile" ] || continue
+          base=$(basename "$dtsfile" .dts)
+          if grep -q "${base}\.dtb" "$MAKEFILE"; then
+            echo "--> ${base}.dtb já registrado no Makefile"
+          else
+            echo "--> Registrando ${base}.dtb no Makefile do rockchip (não estava lá — provavelmente veio via patch que só adiciona o .dts)"
+            echo "dtb-\$(CONFIG_ARCH_ROCKCHIP) += ${base}.dtb" >> "$MAKEFILE"
+          fi
+        done
 
         echo "--> Usando o .config real da ROCKNIX para RK3566 como base..."
         cp ../rocknix-kernel.config .config
