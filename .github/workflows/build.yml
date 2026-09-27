@@ -152,16 +152,22 @@ jobs:
         echo "--> Verificando se os dtbs da X55 e X35S foram gerados:"
         find arch/arm64/boot/dts/rockchip -iname '*powkiddy-x55*' -o -iname '*powkiddy-x35s*'
 
-        echo "--> DIAGNÓSTICO: nó do painel MIPI-DSI declarado no rk3566-powkiddy-x35s.dts"
-        grep -B2 -A 15 'panel@0\|panel:' arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dts || echo "Nó de painel não encontrado com esse padrão."
+        echo "--> DIAGNÓSTICO: tudo relacionado a 'panel' no rk3566-powkiddy-x35s.dts"
+        grep -n -i -B2 -A10 'panel' arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dts || echo "Nada com 'panel' encontrado."
 
-        echo "--> DIAGNÓSTICO: esse driver de painel existe no nosso kernel (drivers/gpu/drm/panel/)?"
-        PANEL_COMPAT=$(grep -A 15 'panel@0\|panel:' arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dts | grep 'compatible' | head -n1)
-        echo "Compatible declarado no .dts: $PANEL_COMPAT"
-        grep -rl "$(echo "$PANEL_COMPAT" | grep -oP '"\K[^"]+' | tail -n1)" drivers/gpu/drm/panel/ 2>/dev/null || \
-          echo "!!! Nenhum driver em drivers/gpu/drm/panel/ contém esse compatible — pode ser exatamente por isso que não há imagem."
+        echo "--> DIAGNÓSTICO: tudo relacionado a 'dsi' no rk3566-powkiddy-x35s.dts"
+        grep -n -i -B2 -A10 'dsi' arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dts || echo "Nada com 'dsi' encontrado."
 
-        echo "--> DIAGNÓSTICO: esse driver está habilitado no nosso .config final?"
+        echo "--> DIAGNÓSTICO: TODAS as linhas 'compatible' do arquivo"
+        grep -n 'compatible' arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dts
+
+        echo "--> DIAGNÓSTICO: esse(s) compatible existe(m) em drivers/gpu/drm/panel/?"
+        for c in $(grep -oP 'compatible\s*=\s*"\K[^"]+' arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dts); do
+          echo "-- checando: $c"
+          grep -rl "$c" drivers/gpu/drm/panel/ 2>/dev/null || echo "   !!! não encontrado em nenhum driver de painel"
+        done
+
+        echo "--> DIAGNÓSTICO: drivers de painel habilitados no .config final"
         grep -i "PANEL" .config | grep '=y\|=m'
 
         if ! find arch/arm64/boot/dts/rockchip -iname '*powkiddy-x35s*' | grep -q .; then
