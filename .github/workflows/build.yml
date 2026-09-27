@@ -79,7 +79,77 @@ jobs:
         echo "--> Verificando se o dtb da X55 foi gerado:"
         find arch/arm64/boot/dts/rockchip -iname '*powkiddy-x55*'
 
-    - name: Prepare Artifacts
+    - name: Create SD Card Image (.img)
+      run: |
+        sudo bash << 'EOF'
+        set -e
+
+        IMAGE_NAME="rk3566-sdcard.img"
+        IMAGE_SIZE_MB=1024
+
+        echo "--> Criando ficheiro de imagem vazio..."
+        dd if=/dev/zero of=${IMAGE_NAME} bs=1M count=${IMAGE_SIZE_MB} status=progress
+
+        echo "--> Criando tabela de particoes MBR..."
+        parted -s ${IMAGE_NAME} mklabel msdos
+        parted -s ${IMAGE_NAME} mkpart primary fat32 16MiB 256MiB
+        parted -s ${IMAGE_NAME} mkpart primary ext4 256MiB 100%
+
+        echo "--> Mapeando particoes para Loop Devices..."
+        LOOP_DEV=$(losetup -fP --show ${IMAGE_NAME})
+        BOOT_DEV="${LOOP_DEV}p1"
+        ROOT_DEV="${LOOP_DEV}p2"
+
+        echo "--> Formatando particoes..."
+        mkfs.vfat -F 32 -n "BOOT" ${BOOT_DEV}
+        mkfs.ext4 -F -L "ROOTFS" ${ROOT_DEV}
+
+        echo "--> Gravando Bootloader do Rockchip nos setores brutos..."
+        if [ -f uboot/idbloader.img ]; then
+          dd if=uboot/idbloader.img of=${LOOP_DEV} seek=64 conv=notrunc
+        fi
+        if [ -f uboot/uboot.img ]; then
+          dd if=uboot/uboot.img of=${LOOP_DEV} seek=16384 conv=notrunc
+        fi
+        if [ -f uboot/trust.img ]; then
+          dd if=uboot/trust.img of=${LOOP_DEV} seek=24576 conv=notrunc
+        fi
+
+        echo "--> Montando particoes..."
+        mkdir -p /mnt/boot /mnt/rootfs
+        mount ${BOOT_DEV} /mnt/boot
+        mount ${ROOT_DEV} /mnt/rootfs
+
+        echo "--> Copiando Kernel e Device Trees..."
+        cp kernel/arch/arm64/boot/Image /mnt/boot/
+        mkdir -p /mnt/boot/dtbs
+
+        # Busca dinamica por todos os arquivos .dtb gerados
+        find kernel/arch/arm64/boot/dts/ -type f -name "*.dtb" -exec cp {} /mnt/boot/ \;
+        find kernel/arch/arm64/boot/dts/ -type f -name "*.dtb" -exec cp {} /mnt/boot/dtbs/ \;
+
+        echo "--> Criando arquivo de configuracao do U-Boot (extlinux.conf)..."
+        mkdir -p /mnt/boot/extlinux
+        cat << "BOOTCFG" > /mnt/boot/extlinux/extlinux.conf
+        LABEL CustomOS
+            KERNEL /Image
+            FDT /rk3566-powkiddy-x35h.dtb
+            APPEND console=ttyS2,1500000n8 root=/dev/mmcblk0p2 rw rootwait earlycon
+        BOOTCFG
+
+        echo "--> Copiando arquivos do RootFS..."
+        cp -a rootfs/* /mnt/rootfs/
+
+        echo "--> Desmontando e limpando..."
+        umount /mnt/boot
+        umount /mnt/rootfs
+        losetup -d ${LOOP_DEV}
+
+        echo "--> Compactando imagem final..."
+        gzip -f ${IMAGE_NAME}
+        EOF
+
+    - name: Prepare Output Directory
       run: |
         mkdir -p output/dtbs
         [ -f uboot/idbloader.img ] && cp uboot/idbloader.img output/

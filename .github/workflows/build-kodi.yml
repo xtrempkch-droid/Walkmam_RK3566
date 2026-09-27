@@ -1,0 +1,221 @@
+name: Build Kodi Dedicated RK3566 OS
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-os:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Install Build Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+          bison flex libssl-dev bc libncurses-dev kmod u-boot-tools \
+          squashfs-tools genext2fs mtools dosfstools rsync git wget \
+          python3 python3-pyelftools python3-setuptools device-tree-compiler \
+          swig libelf-dev libgnutls28-dev parted kpartx e2fsprogs \
+          qemu-user-static debootstrap
+
+    - name: Fetch Sources (U-Boot, Kernel & RKBIN)
+      run: |
+        git clone --depth 1 https://github.com/TheGammaSqueeze/jelos_rk3566-x55-uboot.git uboot
+        git clone --depth 1 https://github.com/TheGammaSqueeze/jelos_rk3566-x55-kernel.git kernel
+        git clone --depth 1 https://github.com/rockchip-linux/rkbin.git rkbin
+
+    - name: Build U-Boot
+      run: |
+        cd uboot
+        export ARCH=arm64
+        export CROSS_COMPILE=aarch64-linux-gnu-
+
+        export HOSTCFLAGS="-Wno-error -O2"
+        export CFLAGS="-Wno-error -Wno-array-bounds -Wno-stringop-overflow"
+        export KCFLAGS="-Wno-error -Wno-array-bounds -Wno-stringop-overflow"
+
+        for tool in /usr/bin/aarch64-linux-gnu-*; do
+          ln -sf "$tool" "$(basename $tool)"
+        done
+
+        chmod +x make.sh
+
+        if grep -q "x55" make.sh; then
+          echo "--> Executando ./make.sh x55 com Werror desativado"
+          CROSS_COMPILE=aarch64-linux-gnu- KCFLAGS="-Wno-error" CFLAGS="-Wno-error" ./make.sh x55
+        else
+          echo "--> Executando ./make.sh rk3566 com Werror desativado"
+          CROSS_COMPILE=aarch64-linux-gnu- KCFLAGS="-Wno-error" CFLAGS="-Wno-error" ./make.sh rk3566
+        fi
+
+    - name: Build Kernel
+      run: |
+        cd kernel
+        export ARCH=arm64
+        export CROSS_COMPILE=aarch64-linux-gnu-
+
+        export HOSTCFLAGS="-Wno-error -O2"
+        export KCFLAGS="-Wno-error -Wno-enum-int-mismatch -Wno-array-bounds -Wno-stringop-overflow -Wno-implicit-fallthrough"
+
+        KERNEL_CONFIG_PATH=$(find arch/arm64/configs -maxdepth 1 -iname '*defconfig' \
+          \( -iname '*rk3566*' -o -iname '*x55*' \) \
+          2>/dev/null | sort | head -n 1)
+
+        if [ -z "$KERNEL_CONFIG_PATH" ]; then
+          echo "--> Usando defconfig padrao como fallback."
+          KERNEL_CONFIG="defconfig"
+        else
+          KERNEL_CONFIG=$(basename "$KERNEL_CONFIG_PATH")
+        fi
+
+        echo "--> Usando Kernel Config: $KERNEL_CONFIG"
+        make "$KERNEL_CONFIG"
+
+        ./scripts/config --disable CONFIG_ERROR_ON_WARNING || true
+        make olddefconfig
+
+        # Compila a imagem do Kernel, modulos e Device Trees
+        make -j"$(nproc)" KCFLAGS="-Wno-error -Wno-enum-int-mismatch" Image modules
+        make -j"$(nproc)" KCFLAGS="-Wno-error -Wno-enum-int-mismatch" dtbs
+
+    - name: Build Kodi RootFS (ARM64 Debian Base)
+      run: |
+        echo "--> Criando RootFS base Debian ARM64 para o Kodi..."
+        sudo debootstrap --arch=arm64 --foreign bookworm rootfs http://deb.debian.org/debian/
+        sudo cp /usr/bin/qemu-aarch64-static rootfs/usr/bin/
+        sudo chroot rootfs /debootstrap/debootstrap --second-stage
+
+        echo "--> Instalando Kodi e dependencias de Video/Audio..."
+        sudo chroot rootfs bash -c '
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            kodi \
+            kodi-inputstream-adaptive \
+            kodi-peripheral-joystick \
+            alsa-utils \
+            dbus \
+            udev \
+            xorg \
+            xserver-xorg-legacy \
+            pulseaudio \
+            mesa-utils \
+            ca-certificates \
+            locales
+
+          # Permite execucao do servidor grafico sem restricao de utilizador
+          echo "allowed_users=anybody" > /etc/X11/Xwrapper.config
+        '
+
+        echo "--> Instalando modulos do Kernel no RootFS..."
+        cd kernel
+        sudo make INSTALL_MOD_PATH=../rootfs modules_install
+        cd ..
+
+        echo "--> Configurando arranque automatico do Kodi..."
+        sudo bash -c 'cat << "EOF" > rootfs/etc/init.d/rcS
+        #!/bin/sh
+        mount -t proc proc /proc
+        mount -t sysfs sysfs /sys
+        mount -t devtmpfs devtmpfs /dev
+
+        /etc/init.d/udev start 2>/dev/null || udevd --daemon
+        udevadm trigger
+
+        echo "A iniciar o Kodi Media Center..."
+        export HOME=/root
+        export USER=root
+
+        while true; do
+            kodi-standalone -- -- -nocursor || kodi
+            sleep 2
+        done
+        EOF'
+
+        sudo chmod +x rootfs/etc/init.d/rcS
+
+    - name: Create SD Card Image (.img)
+      run: |
+        sudo bash << 'EOF'
+        set -e
+
+        IMAGE_NAME="rk3566-kodi-sdcard.img"
+        IMAGE_SIZE_MB=2560 # 2.5 GB para comportar o Debian e o Kodi
+
+        echo "--> Criando ficheiro de imagem vazio..."
+        dd if=/dev/zero of=${IMAGE_NAME} bs=1M count=${IMAGE_SIZE_MB} status=progress
+
+        echo "--> Criando tabela de particoes MBR..."
+        parted -s ${IMAGE_NAME} mklabel msdos
+        parted -s ${IMAGE_NAME} mkpart primary fat32 16MiB 256MiB
+        parted -s ${IMAGE_NAME} mkpart primary ext4 256MiB 100%
+
+        echo "--> Mapeando particoes para Loop Devices..."
+        LOOP_DEV=$(losetup -fP --show ${IMAGE_NAME})
+        BOOT_DEV="${LOOP_DEV}p1"
+        ROOT_DEV="${LOOP_DEV}p2"
+
+        echo "--> Formatando particoes..."
+        mkfs.vfat -F 32 -n "BOOT" ${BOOT_DEV}
+        mkfs.ext4 -F -L "ROOTFS" ${ROOT_DEV}
+
+        echo "--> Gravando Bootloader do Rockchip nos setores brutos..."
+        if [ -f uboot/idbloader.img ]; then
+          dd if=uboot/idbloader.img of=${LOOP_DEV} seek=64 conv=notrunc
+        fi
+        if [ -f uboot/uboot.img ]; then
+          dd if=uboot/uboot.img of=${LOOP_DEV} seek=16384 conv=notrunc
+        fi
+        if [ -f uboot/trust.img ]; then
+          dd if=uboot/trust.img of=${LOOP_DEV} seek=24576 conv=notrunc
+        fi
+
+        echo "--> Montando particoes..."
+        mkdir -p /mnt/boot /mnt/rootfs
+        mount ${BOOT_DEV} /mnt/boot
+        mount ${ROOT_DEV} /mnt/rootfs
+
+        echo "--> Copiando Kernel e Device Trees..."
+        cp kernel/arch/arm64/boot/Image /mnt/boot/
+        mkdir -p /mnt/boot/dtbs
+
+        find kernel/arch/arm64/boot/dts/ -type f -name "*.dtb" -exec cp {} /mnt/boot/ \;
+        find kernel/arch/arm64/boot/dts/ -type f -name "*.dtb" -exec cp {} /mnt/boot/dtbs/ \;
+
+        echo "--> Criando arquivo de configuracao do U-Boot (extlinux.conf)..."
+        mkdir -p /mnt/boot/extlinux
+        cat << "BOOTCFG" > /mnt/boot/extlinux/extlinux.conf
+        LABEL KodiOS
+            KERNEL /Image
+            FDT /rk3566-powkiddy-x35h.dtb
+            APPEND console=ttyS2,1500000n8 root=/dev/mmcblk0p2 rw rootwait earlycon quiet
+        BOOTCFG
+
+        echo "--> Copiando arquivos do RootFS..."
+        cp -a rootfs/* /mnt/rootfs/
+
+        echo "--> Desmontando e limpando..."
+        umount /mnt/boot
+        umount /mnt/rootfs
+        losetup -d ${LOOP_DEV}
+
+        echo "--> Compactando imagem final..."
+        gzip -f ${IMAGE_NAME}
+        EOF
+
+    - name: Prepare Output Directory
+      run: |
+        mkdir -p output
+        mv rk3566-kodi-sdcard.img.gz output/
+
+    - name: Upload SD Card Image Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: rk3566-kodi-sdcard-image
+        path: output/rk3566-kodi-sdcard.img.gz
