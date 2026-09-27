@@ -152,6 +152,18 @@ jobs:
         echo "--> Verificando se os dtbs da X55 e X35S foram gerados:"
         find arch/arm64/boot/dts/rockchip -iname '*powkiddy-x55*' -o -iname '*powkiddy-x35s*'
 
+        echo "--> DIAGNÓSTICO: nó do painel MIPI-DSI declarado no rk3566-powkiddy-x35s.dts"
+        grep -B2 -A 15 'panel@0\|panel:' arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dts || echo "Nó de painel não encontrado com esse padrão."
+
+        echo "--> DIAGNÓSTICO: esse driver de painel existe no nosso kernel (drivers/gpu/drm/panel/)?"
+        PANEL_COMPAT=$(grep -A 15 'panel@0\|panel:' arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dts | grep 'compatible' | head -n1)
+        echo "Compatible declarado no .dts: $PANEL_COMPAT"
+        grep -rl "$(echo "$PANEL_COMPAT" | grep -oP '"\K[^"]+' | tail -n1)" drivers/gpu/drm/panel/ 2>/dev/null || \
+          echo "!!! Nenhum driver em drivers/gpu/drm/panel/ contém esse compatible — pode ser exatamente por isso que não há imagem."
+
+        echo "--> DIAGNÓSTICO: esse driver está habilitado no nosso .config final?"
+        grep -i "PANEL" .config | grep '=y\|=m'
+
         if ! find arch/arm64/boot/dts/rockchip -iname '*powkiddy-x35s*' | grep -q .; then
           echo "!!! rk3566-powkiddy-x35s.dtb NÃO existe neste kernel (v6.12 mainline)."
           echo "!!! Isso confirma: suporte à X35S/X35H provavelmente não está upstream ainda,"
