@@ -60,12 +60,13 @@ jobs:
     - name: Fetch ROCKNIX Config & Patches (RK3566 family - X55 / X35S / X35H)
       run: |
         # A ROCKNIX mantém, no próprio repositório open-source, o .config de
-        # kernel e os patches de device-tree já testados e funcionando nessa
-        # família de placas. Buscamos aqui em vez de adivinhar CONFIG_* um por um.
+        # kernel e os patches/dts de device-tree já testados e funcionando
+        # nessa família de placas. Buscamos aqui em vez de adivinhar.
         #
-        # X35H e X35S usam o MESMO .dtb (a X35H é apenas a versão física
-        # horizontal da X35S) — por isso só existe "x35s" nos patches/dts,
-        # nunca "x35h".
+        # IMPORTANTE: diferente da X55 (que está no Linux mainline), a X35S/
+        # X35H NUNCA foi enviada ao mainline — só existe como fonte própria da
+        # ROCKNIX. Por isso a busca aqui é ampla (qualquer arquivo com "x35"
+        # no nome, não só *.patch).
         git clone --depth 1 https://github.com/ROCKNIX/distribution.git rocknix-src
 
         echo "--> Localizando linux.aarch64.conf (RK3566, comum a toda a família)..."
@@ -73,11 +74,21 @@ jobs:
         echo "Encontrado: $ROCKNIX_KCONFIG"
         cp "$ROCKNIX_KCONFIG" rocknix-kernel.config
 
-        echo "--> Localizando patches específicos de X55 e X35S..."
-        mkdir -p rocknix-patches
-        find rocknix-src \( -iname '*x55*.patch' -o -iname '*x35s*.patch' \) -path '*linux*' \
-          -exec cp {} rocknix-patches/ \;
-        ls -la rocknix-patches/
+        echo "--> Localizando QUALQUER arquivo relacionado a X55/X35S (patch, dts, dtsi)..."
+        mkdir -p rocknix-patches rocknix-dts
+        find rocknix-src \( -iname '*x55*' -o -iname '*x35*' \) -path '*inux*' -type f | sort | tee /tmp/x35-files.txt
+
+        # Separa por tipo: patches vão para aplicar com git apply,
+        # .dts/.dtsi novos vão direto para dentro da árvore do kernel.
+        while read -r f; do
+          case "$f" in
+            *.patch) cp "$f" rocknix-patches/ ;;
+            *.dts|*.dtsi) cp "$f" rocknix-dts/ ;;
+          esac
+        done < /tmp/x35-files.txt
+
+        echo "--> Patches encontrados:"; ls -la rocknix-patches/ 2>/dev/null
+        echo "--> Arquivos .dts/.dtsi encontrados:"; ls -la rocknix-dts/ 2>/dev/null
 
     - name: Build Mainline Kernel
       run: |
@@ -87,9 +98,27 @@ jobs:
 
         echo "--> Aplicando patches de DTS da X55/X35S (SDIO fix / overclock / etc)..."
         for p in ../rocknix-patches/*.patch; do
+          [ -f "$p" ] || continue
           echo "Aplicando $p"
           git apply --reject --whitespace=fix "$p" || echo "!!! Falhou ao aplicar $p, verifique manualmente (pode já não bater com esta versão do kernel)."
         done
+
+        echo "--> Copiando .dts/.dtsi próprios da X35S (não existem em mainline)..."
+        if ls ../rocknix-dts/*.dts* >/dev/null 2>&1; then
+          cp ../rocknix-dts/*.dts* arch/arm64/boot/dts/rockchip/
+          for dtsfile in ../rocknix-dts/*.dts; do
+            [ -f "$dtsfile" ] || continue
+            base=$(basename "$dtsfile" .dts)
+            MAKEFILE="arch/arm64/boot/dts/rockchip/Makefile"
+            if ! grep -q "${base}.dtb" "$MAKEFILE"; then
+              echo "--> Registrando ${base}.dtb no Makefile do rockchip"
+              echo "dtb-\$(CONFIG_ARCH_ROCKCHIP) += ${base}.dtb" >> "$MAKEFILE"
+            fi
+          done
+        else
+          echo "!!! Nenhum .dts/.dtsi específico de X35S encontrado no repositório da ROCKNIX."
+          echo "!!! Verifique manualmente rocknix-src (pode estar num caminho não previsto pela busca)."
+        fi
 
         echo "--> Usando o .config real da ROCKNIX para RK3566 como base..."
         cp ../rocknix-kernel.config .config
@@ -109,6 +138,13 @@ jobs:
 
         echo "--> Verificando se os dtbs da X55 e X35S foram gerados:"
         find arch/arm64/boot/dts/rockchip -iname '*powkiddy-x55*' -o -iname '*powkiddy-x35s*'
+
+        if ! find arch/arm64/boot/dts/rockchip -iname '*powkiddy-x35s*' | grep -q .; then
+          echo "!!! rk3566-powkiddy-x35s.dtb NÃO existe neste kernel (v6.12 mainline)."
+          echo "!!! Isso confirma: suporte à X35S/X35H provavelmente não está upstream ainda,"
+          echo "!!! só no fork/patches específicos da ROCKNIX. Sem esse .dtb, o U-Boot não"
+          echo "!!! encontra o FDT e o aparelho fica com tela preta (nenhum 'sistema' visível)."
+        fi
 
     - name: Build Minimal RootFS (Debian ARM64)
       run: |
