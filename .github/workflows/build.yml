@@ -57,7 +57,7 @@ jobs:
         echo "--> Artefatos gerados em uboot/:"
         ls -la idbloader.img u-boot.itb u-boot-rockchip.bin 2>/dev/null || true
 
-    - name: Fetch ROCKNIX Config & Patches (RK3566 family: X55 / X35S / X35H)
+    - name: Fetch ROCKNIX Config & Patches (RK3566 family - X55 / X35S / X35H)
       run: |
         # A ROCKNIX mantém, no próprio repositório open-source, o .config de
         # kernel e os patches de device-tree já testados e funcionando nessa
