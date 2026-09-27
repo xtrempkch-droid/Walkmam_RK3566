@@ -20,7 +20,8 @@ jobs:
           build-essential gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
           bison flex libssl-dev bc libncurses-dev kmod u-boot-tools \
           device-tree-compiler python3 python3-pyelftools python3-setuptools \
-          swig libelf-dev libgnutls28-dev rsync git wget
+          swig libelf-dev libgnutls28-dev rsync git wget \
+          parted kpartx e2fsprogs dosfstools qemu-user-static debootstrap
 
     # Kernel mainline: rk3566-powkiddy-x55.dts existe a partir da tag v6.8.
     # Usamos uma tag estável recente que já contenha o suporte.
@@ -79,24 +80,106 @@ jobs:
         echo "--> Verificando se o dtb da X55 foi gerado:"
         find arch/arm64/boot/dts/rockchip -iname '*powkiddy-x55*'
 
-    - name: Prepare Artifacts
+    - name: Build Minimal RootFS (Debian ARM64)
       run: |
-        mkdir -p output/dtbs
-        [ -f uboot/idbloader.img ] && cp uboot/idbloader.img output/
-        [ -f uboot/u-boot.itb ] && cp uboot/u-boot.itb output/
-        [ -f uboot/u-boot-rockchip.bin ] && cp uboot/u-boot-rockchip.bin output/
-        cp kernel/arch/arm64/boot/Image output/
-        cp kernel/arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x55.dtb output/dtbs/
+        echo "--> Criando RootFS base Debian ARM64..."
+        sudo debootstrap --arch=arm64 --foreign bookworm rootfs http://deb.debian.org/debian/
+        sudo cp /usr/bin/qemu-aarch64-static rootfs/usr/bin/
+        sudo chroot rootfs /debootstrap/debootstrap --second-stage
 
-        cat << 'BOOTCFG' > output/extlinux.conf
+        echo "--> Pacotes básicos + acesso via console serial..."
+        sudo chroot rootfs bash -c '
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            systemd-sysv udev ifupdown network-manager \
+            openssh-server sudo nano
+          echo "root:root" | chpasswd
+          echo "rk3566-x55" > /etc/hostname
+        '
+
+        echo "--> Habilitando login automático no console serial (ttyS2)..."
+        sudo mkdir -p rootfs/etc/systemd/system/serial-getty@ttyS2.service.d
+        sudo bash -c 'cat << "EOF" > rootfs/etc/systemd/system/serial-getty@ttyS2.service.d/autologin.conf
+        [Service]
+        ExecStart=
+        ExecStart=-/sbin/agetty --autologin root --keep-baud 1500000,115200,38400,9600 %I $TERM
+        EOF'
+
+        echo "--> Instalando módulos do kernel no RootFS..."
+        cd kernel
+        sudo make ARCH=arm64 INSTALL_MOD_PATH=../rootfs modules_install
+        cd ..
+
+    - name: Create SD Card Image (.img)
+      run: |
+        sudo bash << 'EOF'
+        set -e
+
+        IMAGE_NAME="rk3566-x55-mainline-sdcard.img"
+        IMAGE_SIZE_MB=2048
+
+        echo "--> Criando arquivo de imagem vazio (${IMAGE_SIZE_MB}MB)..."
+        dd if=/dev/zero of=${IMAGE_NAME} bs=1M count=${IMAGE_SIZE_MB} status=progress
+
+        echo "--> Criando tabela de partições MBR..."
+        parted -s ${IMAGE_NAME} mklabel msdos
+        parted -s ${IMAGE_NAME} mkpart primary fat32 16MiB 144MiB
+        parted -s ${IMAGE_NAME} mkpart primary ext4 144MiB 100%
+
+        echo "--> Mapeando partições para loop devices..."
+        LOOP_DEV=$(losetup -fP --show ${IMAGE_NAME})
+        BOOT_DEV="${LOOP_DEV}p1"
+        ROOT_DEV="${LOOP_DEV}p2"
+
+        echo "--> Formatando partições..."
+        mkfs.vfat -F 32 -n "BOOT" ${BOOT_DEV}
+        mkfs.ext4 -F -L "ROOTFS" ${ROOT_DEV}
+
+        echo "--> Gravando U-Boot mainline nos setores corretos..."
+        # idbloader.img: SPL/TPL -> setor 64  (offset 32KB)
+        # u-boot.itb:    U-Boot proper -> setor 16384 (offset 8MB)
+        dd if=uboot/idbloader.img of=${LOOP_DEV} seek=64 conv=notrunc,fsync
+        dd if=uboot/u-boot.itb of=${LOOP_DEV} seek=16384 conv=notrunc,fsync
+
+        echo "--> Montando partições..."
+        mkdir -p /mnt/boot /mnt/rootfs
+        mount ${BOOT_DEV} /mnt/boot
+        mount ${ROOT_DEV} /mnt/rootfs
+
+        echo "--> Copiando kernel e device tree..."
+        cp kernel/arch/arm64/boot/Image /mnt/boot/
+        mkdir -p /mnt/boot/dtbs
+        cp kernel/arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x55.dtb /mnt/boot/dtbs/
+
+        echo "--> Criando extlinux.conf..."
+        mkdir -p /mnt/boot/extlinux
+        cat << "BOOTCFG" > /mnt/boot/extlinux/extlinux.conf
         LABEL Mainline
             KERNEL /Image
             FDT /dtbs/rk3566-powkiddy-x55.dtb
-            APPEND console=ttyS2,1500000n8 root=/dev/mmcblk0p2 rw rootwait earlycon
+            APPEND console=ttyS2,1500000n8 root=/dev/mmcblk1p2 rw rootwait earlycon
         BOOTCFG
 
-    - name: Upload Build Artifacts
+        echo "--> Copiando rootfs..."
+        cp -a rootfs/* /mnt/rootfs/
+
+        echo "--> Desmontando e limpando..."
+        umount /mnt/boot
+        umount /mnt/rootfs
+        losetup -d ${LOOP_DEV}
+
+        echo "--> Compactando imagem final..."
+        gzip -f ${IMAGE_NAME}
+        EOF
+
+    - name: Prepare Output Directory
+      run: |
+        mkdir -p output
+        mv rk3566-x55-mainline-sdcard.img.gz output/
+
+    - name: Upload SD Card Image Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: rk3566-x55-mainline-output
-        path: output/
+        name: rk3566-x55-mainline-sdcard-image
+        path: output/rk3566-x55-mainline-sdcard.img.gz
