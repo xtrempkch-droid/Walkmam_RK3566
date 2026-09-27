@@ -88,6 +88,13 @@ jobs:
 
         echo "--> Usando o .config real da ROCKNIX para RK3566 como base..."
         cp ../rocknix-kernel.config .config
+
+        # O .config da ROCKNIX usa "@INITRAMFS_SOURCE@" como placeholder de
+        # template, preenchido pelo build system deles (LibreELEC-based) antes
+        # de compilar. Aqui não temos esse pipeline, e como usamos rootfs em
+        # partição separada (não initramfs embutido), zeramos esse campo.
+        ./scripts/config --set-str CONFIG_INITRAMFS_SOURCE ""
+
         make olddefconfig
 
         make -j"$(nproc)" Image dtbs modules
