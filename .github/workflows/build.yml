@@ -57,21 +57,26 @@ jobs:
         echo "--> Artefatos gerados em uboot/:"
         ls -la idbloader.img u-boot.itb u-boot-rockchip.bin 2>/dev/null || true
 
-    - name: Fetch ROCKNIX Config & Patches for RK3566-X55
+    - name: Fetch ROCKNIX Config & Patches (RK3566 family: X55 / X35S / X35H)
       run: |
         # A ROCKNIX mantém, no próprio repositório open-source, o .config de
         # kernel e os patches de device-tree já testados e funcionando nessa
-        # placa. Buscamos aqui em vez de adivinhar CONFIG_* um por um.
+        # família de placas. Buscamos aqui em vez de adivinhar CONFIG_* um por um.
+        #
+        # X35H e X35S usam o MESMO .dtb (a X35H é apenas a versão física
+        # horizontal da X35S) — por isso só existe "x35s" nos patches/dts,
+        # nunca "x35h".
         git clone --depth 1 https://github.com/ROCKNIX/distribution.git rocknix-src
 
-        echo "--> Localizando linux.aarch64.conf (RK3566)..."
+        echo "--> Localizando linux.aarch64.conf (RK3566, comum a toda a família)..."
         ROCKNIX_KCONFIG=$(find rocknix-src -path '*RK3566*/linux/linux.aarch64.conf' | head -n1)
         echo "Encontrado: $ROCKNIX_KCONFIG"
         cp "$ROCKNIX_KCONFIG" rocknix-kernel.config
 
-        echo "--> Localizando patches específicos da X55..."
+        echo "--> Localizando patches específicos de X55 e X35S..."
         mkdir -p rocknix-patches
-        find rocknix-src -iname '*x55*.patch' -path '*linux*' -exec cp {} rocknix-patches/ \;
+        find rocknix-src \( -iname '*x55*.patch' -o -iname '*x35s*.patch' \) -path '*linux*' \
+          -exec cp {} rocknix-patches/ \;
         ls -la rocknix-patches/
 
     - name: Build Mainline Kernel
@@ -80,7 +85,7 @@ jobs:
         export ARCH=arm64
         export CROSS_COMPILE=aarch64-linux-gnu-
 
-        echo "--> Aplicando patches de DTS da X55 (SDIO fix / overclock)..."
+        echo "--> Aplicando patches de DTS da X55/X35S (SDIO fix / overclock / etc)..."
         for p in ../rocknix-patches/*.patch; do
           echo "Aplicando $p"
           git apply --reject --whitespace=fix "$p" || echo "!!! Falhou ao aplicar $p, verifique manualmente (pode já não bater com esta versão do kernel)."
@@ -97,10 +102,13 @@ jobs:
 
         make olddefconfig
 
+        # "make dtbs" compila TODOS os device trees da plataforma Rockchip de
+        # uma vez (não é filtrado por defconfig) — então X55 e X35S saem
+        # juntos aqui, sem precisar de nenhum passo extra.
         make -j"$(nproc)" Image dtbs modules
 
-        echo "--> Verificando se o dtb da X55 foi gerado:"
-        find arch/arm64/boot/dts/rockchip -iname '*powkiddy-x55*'
+        echo "--> Verificando se os dtbs da X55 e X35S foram gerados:"
+        find arch/arm64/boot/dts/rockchip -iname '*powkiddy-x55*' -o -iname '*powkiddy-x35s*'
 
     - name: Build Minimal RootFS (Debian ARM64)
       run: |
@@ -169,19 +177,31 @@ jobs:
         mount ${BOOT_DEV} /mnt/boot
         mount ${ROOT_DEV} /mnt/rootfs
 
-        echo "--> Copiando kernel e device tree..."
+        echo "--> Copiando kernel e device trees (X55 + X35S/X35H)..."
         cp kernel/arch/arm64/boot/Image /mnt/boot/
         mkdir -p /mnt/boot/dtbs
         cp kernel/arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x55.dtb /mnt/boot/dtbs/
+        cp kernel/arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dtb /mnt/boot/dtbs/ 2>/dev/null || \
+          echo "!!! rk3566-powkiddy-x35s.dtb não encontrado neste kernel — X35S/X35H ficarão sem suporte nesta imagem."
 
-        echo "--> Criando extlinux.conf..."
+        echo "--> Criando extlinux.conf (padrão: X55 — troque a linha FDT p/ X35S/X35H)..."
         mkdir -p /mnt/boot/extlinux
         cat << "BOOTCFG" > /mnt/boot/extlinux/extlinux.conf
-        LABEL Mainline
+        LABEL Mainline (Powkiddy X55)
             KERNEL /Image
             FDT /dtbs/rk3566-powkiddy-x55.dtb
             APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw
         BOOTCFG
+
+        # Referência p/ X35S/X35H: mesma imagem, só troca o FDT. Salvamos como
+        # arquivo à parte (não ativo) — é só copiar o conteúdo por cima do
+        # extlinux.conf se o aparelho for a X35S ou a X35H.
+        cat << "BOOTCFG2" > /mnt/boot/extlinux/extlinux.conf.x35s-x35h
+        LABEL Mainline (Powkiddy X35S / X35H)
+            KERNEL /Image
+            FDT /dtbs/rk3566-powkiddy-x35s.dtb
+            APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw
+        BOOTCFG2
 
         echo "--> Copiando rootfs..."
         cp -a rootfs/* /mnt/rootfs/
