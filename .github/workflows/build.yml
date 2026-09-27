@@ -39,23 +39,40 @@ jobs:
 
         make powkiddy-x55-rk3566_defconfig
 
-        # Blobs binários da Rockchip: BL31 (ATF) e inicializador de DDR.
-        # Pegamos a versão mais recente disponível no rkbin.
-        BL31=$(ls ../rkbin/bin/rk35/rk3568_bl31_v*.elf | sort -V | tail -n1)
-        TPL=$(ls ../rkbin/bin/rk35/rk3566_ddr_1056MHz_v*.bin | sort -V | tail -n1)
+        # Versões de blob confirmadas no options da ROCKNIX para RK3566-X55
+        # (projects/Rockchip/devices/RK3566-X55/options)
+        BL31="../rkbin/bin/rk35/rk3568_bl31_v1.43.elf"
+        TPL="../rkbin/bin/rk35/rk3566_ddr_1056MHz_v1.18.bin"
+
+        if [ ! -f "$BL31" ] || [ ! -f "$TPL" ]; then
+          echo "!!! Versão exata não encontrada no rkbin atual, usando a mais recente disponível como fallback:"
+          BL31=$(ls ../rkbin/bin/rk35/rk3568_bl31_v*.elf | sort -V | tail -n1)
+          TPL=$(ls ../rkbin/bin/rk35/rk3566_ddr_1056MHz_v*.bin | sort -V | tail -n1)
+        fi
         echo "--> BL31=$BL31"
         echo "--> DDR/TPL=$TPL"
-
-        if [ -z "$BL31" ] || [ -z "$TPL" ]; then
-          echo "!!! Blobs do rkbin não encontrados. Listando bin/rk35/:"
-          ls ../rkbin/bin/rk35/ | grep -iE 'bl31|ddr' | sort
-          exit 1
-        fi
 
         make BL31="$BL31" ROCKCHIP_TPL="$TPL" -j"$(nproc)"
 
         echo "--> Artefatos gerados em uboot/:"
         ls -la idbloader.img u-boot.itb u-boot-rockchip.bin 2>/dev/null || true
+
+    - name: Fetch ROCKNIX Config & Patches for RK3566-X55
+      run: |
+        # A ROCKNIX mantém, no próprio repositório open-source, o .config de
+        # kernel e os patches de device-tree já testados e funcionando nessa
+        # placa. Buscamos aqui em vez de adivinhar CONFIG_* um por um.
+        git clone --depth 1 https://github.com/ROCKNIX/distribution.git rocknix-src
+
+        echo "--> Localizando linux.aarch64.conf (RK3566)..."
+        ROCKNIX_KCONFIG=$(find rocknix-src -path '*RK3566*/linux/linux.aarch64.conf' | head -n1)
+        echo "Encontrado: $ROCKNIX_KCONFIG"
+        cp "$ROCKNIX_KCONFIG" rocknix-kernel.config
+
+        echo "--> Localizando patches específicos da X55..."
+        mkdir -p rocknix-patches
+        find rocknix-src -iname '*x55*.patch' -path '*linux*' -exec cp {} rocknix-patches/ \;
+        ls -la rocknix-patches/
 
     - name: Build Mainline Kernel
       run: |
@@ -63,16 +80,14 @@ jobs:
         export ARCH=arm64
         export CROSS_COMPILE=aarch64-linux-gnu-
 
-        make defconfig
+        echo "--> Aplicando patches de DTS da X55 (SDIO fix / overclock)..."
+        for p in ../rocknix-patches/*.patch; do
+          echo "Aplicando $p"
+          git apply --reject --whitespace=fix "$p" || echo "!!! Falhou ao aplicar $p, verifique manualmente (pode já não bater com esta versão do kernel)."
+        done
 
-        # Garante que o driver de display/GPU/som básicos da Rockchip
-        # estejam ativos (o defconfig arm64 já traz ARCH_ROCKCHIP e a
-        # maioria das dependências, mas reforçamos o essencial p/ boot).
-        ./scripts/config --enable CONFIG_ARCH_ROCKCHIP \
-                          --enable CONFIG_DRM_ROCKCHIP \
-                          --enable CONFIG_MMC_DW_ROCKCHIP \
-                          --enable CONFIG_ROCKCHIP_SARADC \
-                          --enable CONFIG_PWM_ROCKCHIP
+        echo "--> Usando o .config real da ROCKNIX para RK3566 como base..."
+        cp ../rocknix-kernel.config .config
         make olddefconfig
 
         make -j"$(nproc)" Image dtbs modules
@@ -158,7 +173,7 @@ jobs:
         LABEL Mainline
             KERNEL /Image
             FDT /dtbs/rk3566-powkiddy-x55.dtb
-            APPEND console=ttyS2,1500000n8 root=/dev/mmcblk1p2 rw rootwait earlycon
+            APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw
         BOOTCFG
 
         echo "--> Copiando rootfs..."
