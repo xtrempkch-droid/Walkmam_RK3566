@@ -101,6 +101,25 @@ jobs:
         echo "--> Patches encontrados:"; ls -la rocknix-patches/ 2>/dev/null
         echo "--> Arquivos .dts/.dtsi encontrados:"; ls -la rocknix-dts/ 2>/dev/null
 
+        echo "--> Localizando o driver compartilhado panel-generic-dsi.c (usado por RK3326/RK3566/RK3576)..."
+        # Esse driver NÃO fica na pasta do dispositivo (não tem "x35"/"x55" no
+        # nome) — é injetado direto pelo script de build deles a partir de um
+        # local comum em projects/ROCKNIX/packages/linux/.
+        GENERIC_DSI_C=$(find rocknix-src -iname 'panel-generic-dsi.c' | head -n1)
+        echo "Encontrado: $GENERIC_DSI_C"
+        if [ -n "$GENERIC_DSI_C" ]; then
+          cp "$GENERIC_DSI_C" rocknix-panel-generic-dsi.c
+        fi
+
+        echo "--> Localizando o package.mk do kernel da ROCKNIX (mostra como eles registram o driver)..."
+        LINUX_PKGMK=$(find rocknix-src -path '*packages/linux/package.mk' | head -n1)
+        echo "Encontrado: $LINUX_PKGMK"
+        if [ -n "$LINUX_PKGMK" ]; then
+          echo "--> Trecho relevante (post_patch / panel-generic-dsi):"
+          grep -n -B2 -A20 'generic-dsi\|post_patch' "$LINUX_PKGMK" | head -n 100
+          cp "$LINUX_PKGMK" rocknix-linux-package.mk
+        fi
+
     - name: Build Mainline Kernel
       run: |
         cd kernel
@@ -143,6 +162,54 @@ jobs:
         ./scripts/config --set-str CONFIG_INITRAMFS_SOURCE ""
 
         make olddefconfig
+
+        echo "--> Integrando o driver panel-generic-dsi.c (compartilhado, fora da árvore mainline)..."
+        if [ -f ../rocknix-panel-generic-dsi.c ]; then
+          cp ../rocknix-panel-generic-dsi.c drivers/gpu/drm/panel/panel-generic-dsi.c
+
+          # Tenta descobrir o nome real da CONFIG_ que a ROCKNIX usa, lendo
+          # do próprio package.mk deles em vez de chutar.
+          GENERIC_DSI_CONFIG=""
+          if [ -f ../rocknix-linux-package.mk ]; then
+            GENERIC_DSI_CONFIG=$(grep -oP 'CONFIG_DRM_PANEL_\w*GENERIC\w*' ../rocknix-linux-package.mk | sort -u | head -n1)
+          fi
+          if [ -z "$GENERIC_DSI_CONFIG" ]; then
+            GENERIC_DSI_CONFIG="CONFIG_DRM_PANEL_GENERIC_DSI"
+            echo "!!! Não achei o nome exato da CONFIG no package.mk, usando o padrão: $GENERIC_DSI_CONFIG"
+          else
+            echo "--> Nome real encontrado no package.mk: $GENERIC_DSI_CONFIG"
+          fi
+          CFG_SYMBOL=${GENERIC_DSI_CONFIG#CONFIG_}
+
+          if ! grep -q "config ${CFG_SYMBOL}$" drivers/gpu/drm/panel/Kconfig; then
+            echo "--> Registrando ${CFG_SYMBOL} no Kconfig..."
+            KCONFIG_BLOCK=$'\nconfig '"${CFG_SYMBOL}"$'\n\ttristate "Generic MIPI-DSI panel (ROCKNIX)"\n\tdepends on OF\n\tdepends on DRM_MIPI_DSI\n\tdepends on BACKLIGHT_CLASS_DEVICE\n\tselect DRM_KMS_HELPER\n\thelp\n\t  Driver generico de painel MIPI-DSI controlado via sequencia de\n\t  inicializacao declarada no device tree (panel_description).\n'
+            if grep -q '^endmenu' drivers/gpu/drm/panel/Kconfig; then
+              awk -v block="$KCONFIG_BLOCK" '/^endmenu/ && !done {print block; done=1} {print}' \
+                drivers/gpu/drm/panel/Kconfig > /tmp/Kconfig.new
+              mv /tmp/Kconfig.new drivers/gpu/drm/panel/Kconfig
+            else
+              printf '%s\n' "$KCONFIG_BLOCK" >> drivers/gpu/drm/panel/Kconfig
+            fi
+          else
+            echo "--> ${CFG_SYMBOL} já estava no Kconfig"
+          fi
+
+          if ! grep -q "panel-generic-dsi.o" drivers/gpu/drm/panel/Makefile; then
+            echo "--> Registrando no Makefile..."
+            echo "obj-\$(${GENERIC_DSI_CONFIG}) += panel-generic-dsi.o" >> drivers/gpu/drm/panel/Makefile
+          else
+            echo "--> Já estava registrado no Makefile"
+          fi
+
+          echo "--> Habilitando ${GENERIC_DSI_CONFIG} no .config..."
+          ./scripts/config --enable "$GENERIC_DSI_CONFIG"
+          make olddefconfig
+        else
+          echo "!!! panel-generic-dsi.c NÃO foi encontrado no repositório da ROCKNIX."
+          echo "!!! Sem ele, o painel da X35S/X35H não vai inicializar (mesmo com o .dtb certo),"
+          echo "!!! porque o compatible \"rocknix,generic-dsi\" não tem driver nenhum."
+        fi
 
         # "make dtbs" compila TODOS os device trees da plataforma Rockchip de
         # uma vez (não é filtrado por defconfig) — então X55 e X35S saem
