@@ -1,4 +1,4 @@
-name: Build Custom RK3566 OS
+name: Build Mainline RK3566 (Powkiddy X55) OS
 
 on:
   push:
@@ -19,112 +19,84 @@ jobs:
         sudo apt-get install -y \
           build-essential gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
           bison flex libssl-dev bc libncurses-dev kmod u-boot-tools \
-          squashfs-tools genext2fs mtools dosfstools rsync git wget \
-          python3 python3-pyelftools python3-setuptools device-tree-compiler \
-          swig libelf-dev libgnutls28-dev
+          device-tree-compiler python3 python3-pyelftools python3-setuptools \
+          swig libelf-dev libgnutls28-dev rsync git wget
 
-    - name: Fetch Sources (U-Boot, Kernel & RKBIN)
+    # Kernel mainline: rk3566-powkiddy-x55.dts existe a partir da tag v6.8.
+    # Usamos uma tag estável recente que já contenha o suporte.
+    - name: Fetch Sources (Mainline U-Boot, Mainline Kernel & RKBIN)
       run: |
-        git clone --depth 1 https://github.com/TheGammaSqueeze/jelos_rk3566-x55-uboot.git uboot
-        git clone --depth 1 https://github.com/TheGammaSqueeze/jelos_rk3566-x55-kernel.git kernel
+        git clone --depth 1 https://source.denx.de/u-boot/u-boot.git uboot
+        git clone --depth 1 --branch v6.12 https://github.com/torvalds/linux.git kernel
         git clone --depth 1 https://github.com/rockchip-linux/rkbin.git rkbin
 
-    - name: Build U-Boot
+    - name: Build Mainline U-Boot
       run: |
         cd uboot
         export ARCH=arm64
         export CROSS_COMPILE=aarch64-linux-gnu-
 
-        # Desativa o tratamento de warnings como erros no GCC moderno
-        export HOSTCFLAGS="-Wno-error -O2"
-        export CFLAGS="-Wno-error -Wno-array-bounds -Wno-stringop-overflow"
-        export KCFLAGS="-Wno-error -Wno-array-bounds -Wno-stringop-overflow"
+        make powkiddy-x55-rk3566_defconfig
 
-        # Linka todos os binarios do toolchain aarch64 para a raiz do uboot
-        for tool in /usr/bin/aarch64-linux-gnu-*; do
-          ln -sf "$tool" "$(basename $tool)"
-        done
+        # Blobs binários da Rockchip: BL31 (ATF) e inicializador de DDR.
+        # Pegamos a versão mais recente disponível no rkbin.
+        BL31=$(ls ../rkbin/bin/rk35/rk3568_bl31_v*.elf | sort -V | tail -n1)
+        TPL=$(ls ../rkbin/bin/rk35/rk3566_ddr_1056MHz_v*.bin | sort -V | tail -n1)
+        echo "--> BL31=$BL31"
+        echo "--> DDR/TPL=$TPL"
 
-        chmod +x make.sh
-
-        # Executa desativando a flag -Werror
-        if grep -q "x55" make.sh; then
-          echo "--> Executando ./make.sh x55 com Werror desativado"
-          CROSS_COMPILE=aarch64-linux-gnu- KCFLAGS="-Wno-error" CFLAGS="-Wno-error" ./make.sh x55
-        else
-          echo "--> Executando ./make.sh rk3566 com Werror desativado"
-          CROSS_COMPILE=aarch64-linux-gnu- KCFLAGS="-Wno-error" CFLAGS="-Wno-error" ./make.sh rk3566
+        if [ -z "$BL31" ] || [ -z "$TPL" ]; then
+          echo "!!! Blobs do rkbin não encontrados. Listando bin/rk35/:"
+          ls ../rkbin/bin/rk35/ | grep -iE 'bl31|ddr' | sort
+          exit 1
         fi
 
-    - name: Build Kernel
+        make BL31="$BL31" ROCKCHIP_TPL="$TPL" -j"$(nproc)"
+
+        echo "--> Artefatos gerados em uboot/:"
+        ls -la idbloader.img u-boot.itb u-boot-rockchip.bin 2>/dev/null || true
+
+    - name: Build Mainline Kernel
       run: |
         cd kernel
         export ARCH=arm64
         export CROSS_COMPILE=aarch64-linux-gnu-
 
-        # Flags para desativar avisos como erro no GCC moderno
-        export HOSTCFLAGS="-Wno-error -O2"
-        export KCFLAGS="-Wno-error -Wno-enum-int-mismatch -Wno-array-bounds -Wno-stringop-overflow -Wno-implicit-fallthrough"
+        make defconfig
 
-        # Busca dinamica por arquivos defconfig validos
-        KERNEL_CONFIG_PATH=$(find arch/arm64/configs -maxdepth 1 -iname '*defconfig' \
-          \( -iname '*rk3566*' -o -iname '*x55*' \) \
-          2>/dev/null | sort | head -n 1)
-
-        if [ -z "$KERNEL_CONFIG_PATH" ]; then
-          echo "--> Usando defconfig padrao como fallback."
-          KERNEL_CONFIG="defconfig"
-        else
-          KERNEL_CONFIG=$(basename "$KERNEL_CONFIG_PATH")
-        fi
-
-        echo "--> Usando Kernel Config: $KERNEL_CONFIG"
-        make "$KERNEL_CONFIG"
-
-        # Desativa a opcao de tratar avisos como erros no .config gerado
-        ./scripts/config --disable CONFIG_ERROR_ON_WARNING || true
-
-        # Atualiza a configuracao
+        # Garante que o driver de display/GPU/som básicos da Rockchip
+        # estejam ativos (o defconfig arm64 já traz ARCH_ROCKCHIP e a
+        # maioria das dependências, mas reforçamos o essencial p/ boot).
+        ./scripts/config --enable CONFIG_ARCH_ROCKCHIP \
+                          --enable CONFIG_DRM_ROCKCHIP \
+                          --enable CONFIG_MMC_DW_ROCKCHIP \
+                          --enable CONFIG_ROCKCHIP_SARADC \
+                          --enable CONFIG_PWM_ROCKCHIP
         make olddefconfig
 
-        # Compila a imagem, os device trees e os modulos ignorando avisos fatais
-        make -j"$(nproc)" KCFLAGS="-Wno-error -Wno-enum-int-mismatch" Image dtbs modules
+        make -j"$(nproc)" Image dtbs modules
 
-    - name: Assemble RootFS Structure
-      run: |
-        mkdir -p rootfs/{bin,sbin,dev,proc,sys,etc/init.d,mnt,usr/bin,usr/lib}
-
-        # Criando o script de inicializacao basico
-        cat << 'EOF' > rootfs/etc/init.d/rcS
-        #!/bin/sh
-        mount -t proc proc /proc
-        mount -t sysfs sysfs /sys
-        mount -t devtmpfs devtmpfs /dev
-        echo "Sistema Walkman RK3566 inicializado com sucesso!"
-        EOF
-
-        chmod +x rootfs/etc/init.d/rcS
+        echo "--> Verificando se o dtb da X55 foi gerado:"
+        find arch/arm64/boot/dts/rockchip -iname '*powkiddy-x55*'
 
     - name: Prepare Artifacts
       run: |
-        mkdir -p output
-        
-        # Coleta os binarios do U-Boot/RKBIN
-        cp uboot/*loader*.bin output/ 2>/dev/null || true
-        cp uboot/*uboot*.bin output/ 2>/dev/null || true
-        cp uboot/uboot.img output/ 2>/dev/null || true
-        cp uboot/trust.img output/ 2>/dev/null || true
-        cp uboot/idbloader.img output/ 2>/dev/null || true
-        
-        # Coleta a imagem do Kernel
-        cp kernel/arch/arm64/boot/Image output/ 2>/dev/null || true
-        
-        # Coleta os Device Trees (.dtb)
         mkdir -p output/dtbs
-        cp kernel/arch/arm64/boot/dts/rockchip/*.dtb output/dtbs/ 2>/dev/null || true
+        [ -f uboot/idbloader.img ] && cp uboot/idbloader.img output/
+        [ -f uboot/u-boot.itb ] && cp uboot/u-boot.itb output/
+        [ -f uboot/u-boot-rockchip.bin ] && cp uboot/u-boot-rockchip.bin output/
+        cp kernel/arch/arm64/boot/Image output/
+        cp kernel/arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x55.dtb output/dtbs/
+
+        cat << 'BOOTCFG' > output/extlinux.conf
+        LABEL Mainline
+            KERNEL /Image
+            FDT /dtbs/rk3566-powkiddy-x55.dtb
+            APPEND console=ttyS2,1500000n8 root=/dev/mmcblk0p2 rw rootwait earlycon
+        BOOTCFG
 
     - name: Upload Build Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: rk3566-build-output
+        name: rk3566-x55-mainline-output
         path: output/
