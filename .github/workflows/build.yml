@@ -74,9 +74,20 @@ jobs:
         echo "Encontrado: $ROCKNIX_KCONFIG"
         cp "$ROCKNIX_KCONFIG" rocknix-kernel.config
 
-        echo "--> Localizando QUALQUER arquivo relacionado a X55/X35S (patch, dts, dtsi)..."
+        echo "--> Localizando QUALQUER arquivo relacionado a X55/X35S no repositório inteiro..."
         mkdir -p rocknix-patches rocknix-dts
-        find rocknix-src \( -iname '*x55*' -o -iname '*x35*' \) -path '*inux*' -type f | sort | tee /tmp/x35-files.txt
+        # (sem restringir a caminhos com "linux" — a ROCKNIX guarda config de
+        # cada aparelho em pastas como devices/RK3566-X55/, sem essa palavra)
+        find rocknix-src \( -iname '*x55*' -o -iname '*x35*' \) -type f | sort | tee /tmp/x35-files.txt
+
+        echo "--> Conteúdo do arquivo 'options' da X35S/X35H (confirma o nome real do .dtb esperado)..."
+        X35_OPTIONS=$(grep -i 'x35' /tmp/x35-files.txt | grep -i 'options$' | head -n1)
+        if [ -n "$X35_OPTIONS" ]; then
+          echo "Arquivo: $X35_OPTIONS"
+          cat "$X35_OPTIONS"
+        else
+          echo "Nenhum arquivo 'options' específico de X35S/X35H encontrado."
+        fi
 
         # Separa por tipo: patches vão para aplicar com git apply,
         # .dts/.dtsi novos vão direto para dentro da árvore do kernel.
