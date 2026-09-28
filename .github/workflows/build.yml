@@ -245,9 +245,19 @@ jobs:
         grep -i "PANEL" .config | grep '=y\|=m'
 
         echo "--> DIAGNÓSTICO: drivers de entrada (botões/analógico) habilitados no .config"
-        echo "--> (esperado: JOYSTICK_ADC e KEYBOARD_GPIO/INPUT_GPIO_KEYS, usados pelo"
-        echo "--> gpio-keys/adc-joystick que a família RK3566 usa pros botões físicos)"
-        grep -iE "JOYSTICK_ADC|GPIO_KEYS|INPUT_ADC_KEYS" .config
+        echo "--> (esperado: JOYSTICK_ADC e KEYBOARD_GPIO, usados pelo adc-joystick/gpio-keys"
+        echo "--> que a família RK3566 usa pros botões físicos)"
+        grep -iE "JOYSTICK_ADC|KEYBOARD_GPIO|KEYBOARD_ADC|INPUT_ADC_KEYS" .config
+
+        echo "--> Garantindo (forçando) que os drivers de botão estão habilitados,"
+        echo "--> já que sem rede no aparelho não dá pra checar e corrigir remotamente:"
+        ./scripts/config --enable CONFIG_JOYSTICK_ADC
+        ./scripts/config --enable CONFIG_KEYBOARD_GPIO
+        ./scripts/config --enable CONFIG_KEYBOARD_ADC
+        ./scripts/config --enable CONFIG_INPUT_JOYSTICK
+        ./scripts/config --enable CONFIG_INPUT_EVDEV
+        make olddefconfig
+        make -j"$(nproc)" Image modules
 
         if ! find arch/arm64/boot/dts/rockchip -iname '*powkiddy-x35s*' | grep -q .; then
           echo "!!! rk3566-powkiddy-x35s.dtb NÃO existe neste kernel (v6.12 mainline)."
