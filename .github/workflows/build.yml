@@ -152,6 +152,13 @@ jobs:
           fi
         done
 
+        echo "--> A X35S/X35H não tem porta HDMI física — desabilitando o nó HDMI do SoC no"
+        echo "--> .dts antes de compilar (se ficasse habilitado, o Kodi em modo GBM poderia"
+        echo "--> escolher esse conector 'fantasma' em vez do painel, deixando a tela preta)."
+        if [ -f arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dts ]; then
+          printf '\n&hdmi {\n\tstatus = "disabled";\n};\n' >> arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dts
+        fi
+
         echo "--> Usando o .config real da ROCKNIX para RK3566 como base..."
         cp ../rocknix-kernel.config .config
 
