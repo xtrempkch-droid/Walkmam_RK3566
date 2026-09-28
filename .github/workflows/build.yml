@@ -270,6 +270,52 @@ jobs:
         ExecStart=-/sbin/agetty --autologin root --keep-baud 1500000,115200,38400,9600 %I $TERM
         EOF'
 
+        echo "--> Habilitando login automático na tela (tty1)..."
+        sudo mkdir -p rootfs/etc/systemd/system/getty@tty1.service.d
+        sudo bash -c 'cat << "EOF" > rootfs/etc/systemd/system/getty@tty1.service.d/autologin.conf
+        [Service]
+        ExecStart=
+        ExecStart=-/sbin/agetty --autologin root --noclear %I $TERM
+        EOF'
+
+        echo "--> Instalando Kodi (GBM, sem X11) e dependências gráficas/áudio..."
+        sudo chroot rootfs bash -c '
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get install -y --no-install-recommends \
+            kodi kodi-bin kodi-peripheral-joystick \
+            libgl1-mesa-dri libegl-mesa0 libgbm1 libgles2 libinput10 \
+            alsa-utils dbus ca-certificates
+          apt-get clean
+          rm -rf /var/lib/apt/lists/*
+        '
+
+        echo "--> Verificando se este Kodi tem o backend GBM:"
+        sudo find rootfs/usr -iname 'kodi-gbm*' || echo "!!! kodi-gbm NÃO encontrado neste pacote Debian — precisaremos de outra fonte de Kodi."
+
+        echo "--> Criando serviço systemd do Kodi (tela cheia via DRM/GBM no tty1)..."
+        sudo bash -c 'cat << "EOF" > rootfs/etc/systemd/system/kodi.service
+        [Unit]
+        Description=Kodi Media Center (GBM)
+        After=systemd-user-sessions.service systemd-udev-settle.service sound.target
+        Conflicts=getty@tty1.service
+        After=getty@tty1.service
+
+        [Service]
+        User=root
+        Environment=HOME=/root
+        Environment=KODI_AE_SINK=ALSA
+        TTYPath=/dev/tty1
+        StandardInput=tty
+        StandardOutput=journal
+        ExecStart=/usr/bin/kodi --standalone --windowing=gbm
+        Restart=always
+        RestartSec=3
+
+        [Install]
+        WantedBy=multi-user.target
+        EOF'
+        sudo chroot rootfs systemctl enable kodi.service
+
         echo "--> Instalando módulos do kernel no RootFS..."
         cd kernel
         sudo make ARCH=arm64 INSTALL_MOD_PATH=../rootfs modules_install
@@ -281,7 +327,7 @@ jobs:
         set -e
 
         IMAGE_NAME="rk3566-x55-mainline-sdcard.img"
-        IMAGE_SIZE_MB=2048
+        IMAGE_SIZE_MB=4096
 
         echo "--> Criando arquivo de imagem vazio (${IMAGE_SIZE_MB}MB)..."
         dd if=/dev/zero of=${IMAGE_NAME} bs=1M count=${IMAGE_SIZE_MB} status=progress
