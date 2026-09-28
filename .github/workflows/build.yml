@@ -244,6 +244,11 @@ jobs:
         echo "--> DIAGNÓSTICO: drivers de painel habilitados no .config final"
         grep -i "PANEL" .config | grep '=y\|=m'
 
+        echo "--> DIAGNÓSTICO: drivers de entrada (botões/analógico) habilitados no .config"
+        echo "--> (esperado: JOYSTICK_ADC e KEYBOARD_GPIO/INPUT_GPIO_KEYS, usados pelo"
+        echo "--> gpio-keys/adc-joystick que a família RK3566 usa pros botões físicos)"
+        grep -iE "JOYSTICK_ADC|GPIO_KEYS|INPUT_ADC_KEYS" .config
+
         if ! find arch/arm64/boot/dts/rockchip -iname '*powkiddy-x35s*' | grep -q .; then
           echo "!!! rk3566-powkiddy-x35s.dtb NÃO existe neste kernel (v6.12 mainline)."
           echo "!!! Isso confirma: suporte à X35S/X35H provavelmente não está upstream ainda,"
@@ -291,6 +296,7 @@ jobs:
           apt-get install -y --no-install-recommends \
             kodi kodi-bin kodi-peripheral-joystick \
             libgl1-mesa-dri libegl-mesa0 libgbm1 libgles2 libinput10 \
+            evtest \
             alsa-utils dbus ca-certificates
           apt-get clean
           rm -rf /var/lib/apt/lists/*
