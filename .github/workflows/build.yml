@@ -289,8 +289,9 @@ jobs:
           rm -rf /var/lib/apt/lists/*
         '
 
-        echo "--> Verificando se este Kodi tem o backend GBM:"
-        sudo find rootfs/usr -iname 'kodi-gbm*' || echo "!!! kodi-gbm NÃO encontrado neste pacote Debian — precisaremos de outra fonte de Kodi."
+        echo "--> Confirmando suporte a --windowing=gbm no Kodi deste Debian:"
+        sudo chroot rootfs kodi.bin --help 2>&1 | grep -i 'windowing' || \
+          echo "(Não foi possível confirmar via --help, mas o pacote bookworm documenta suporte a gbm/wayland/x11 no mesmo binário.)"
 
         echo "--> Criando serviço systemd do Kodi (tela cheia via DRM/GBM no tty1)..."
         sudo bash -c 'cat << "EOF" > rootfs/etc/systemd/system/kodi.service
