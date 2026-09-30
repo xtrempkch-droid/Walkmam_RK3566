@@ -1,4 +1,4 @@
-name: Build Mainline RK3566 (Powkiddy X55 / X35S) OS
+name: Build Mainline RK3566 OS
 
 on:
   push:
@@ -53,7 +53,7 @@ jobs:
         ROCKNIX_KCONFIG=$(find rocknix-src -path '*RK3566*/linux/linux.aarch64.conf' | head -n1)
         cp "$ROCKNIX_KCONFIG" rocknix-kernel.config
 
-        find rocknix-src \(-iname '*x55*' -o -iname '*x35*'\) -type f > /tmp/x35-files.txt
+        find rocknix-src \( -iname '*x55*' -o -iname '*x35*' \) -type f > /tmp/x35-files.txt
 
         while read -r f; do
           case "$f" in
@@ -67,26 +67,19 @@ jobs:
           cp "$GENERIC_DSI_C" rocknix-panel-generic-dsi.c
         fi
 
-    - name: Build Mainline Kernel (com USB Gadget & Drivers)
+    - name: Build Mainline Kernel
       run: |
         cd kernel
         export ARCH=arm64
         export CROSS_COMPILE=aarch64-linux-gnu-
 
-        # Aplica patches
         for p in ../rocknix-patches/*.patch; do
           [ -f "$p" ] || continue
           git apply --reject --whitespace=fix "$p" || true
         done
 
-        # Copia DTS customizados da ROCKNIX
         if ls ../rocknix-dts/*.dts* >/dev/null 2>&1; then
           cp ../rocknix-dts/*.dts* arch/arm64/boot/dts/rockchip/
-        fi
-
-        # Garante que a porta USB2/USB3 no DTS da X35S/X35H fique no modo OTG
-        if [ -f arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dts ]; then
-          sed -i 's/dr_mode = "host";/dr_mode = "otg";/g' arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dts
         fi
 
         MAKEFILE="arch/arm64/boot/dts/rockchip/Makefile"
@@ -100,7 +93,23 @@ jobs:
         cp ../rocknix-kernel.config .config
         ./scripts/config --set-str CONFIG_INITRAMFS_SOURCE ""
 
-        # Integracao do driver de painel MIPI-DSI
+        # FORÇAR MODO PERIPHERAL NO DEVICE TREE (OTG RK3566)
+        for dts in arch/arm64/boot/dts/rockchip/rk3566-powkiddy-*.dts; do
+          [ -f "$dts" ] || continue
+          echo "--> Forçando dr_mode = peripheral em $dts"
+          cat << 'EOF_DTS' >> "$dts"
+
+&usbdrd_dwc3_0 {
+	dr_mode = "peripheral";
+	status = "okay";
+};
+&usb2phy0_otg {
+	status = "okay";
+};
+EOF_DTS
+        done
+
+        # Driver de Painel MIPI-DSI Generico (ROCKNIX)
         if [ -f ../rocknix-panel-generic-dsi.c ]; then
           cp ../rocknix-panel-generic-dsi.c drivers/gpu/drm/panel/panel-generic-dsi.c
           if ! grep -q "panel-generic-dsi.o" drivers/gpu/drm/panel/Makefile; then
@@ -111,26 +120,30 @@ jobs:
           ./scripts/config --enable CONFIG_DRM_PANEL_GENERIC_DSI
         fi
 
-        # Drivers de Botoes / Gamepad
+        # Drivers de Botoes e Controles
         ./scripts/config --enable CONFIG_JOYSTICK_ADC
         ./scripts/config --enable CONFIG_KEYBOARD_GPIO
         ./scripts/config --enable CONFIG_KEYBOARD_ADC
         ./scripts/config --enable CONFIG_INPUT_JOYSTICK
         ./scripts/config --enable CONFIG_INPUT_EVDEV
 
-        # Drivers USB Gadget Ethernet (RNDIS / CDC Ethernet)
+        # Drivers PHY da Rockchip (Built-in =y)
+        ./scripts/config --enable CONFIG_PHY_ROCKCHIP_INNO_USB2
+        ./scripts/config --enable CONFIG_PHY_ROCKCHIP_NANENG_COMBPHY
+        ./scripts/config --enable CONFIG_NOP_USB_XCEIV
+
+        # USB Gadget e Configfs
         ./scripts/config --enable CONFIG_USB_GADGET
         ./scripts/config --enable CONFIG_USB_DWC3
-        ./scripts/config --enable CONFIG_USB_DWC3_DUAL_ROLE
-        ./scripts/config --enable CONFIG_USB_ROLE_SWITCH
-        ./scripts/config --module CONFIG_USB_LIBCOMPOSITE
-        ./scripts/config --module CONFIG_USB_ETH
-        ./scripts/config --enable CONFIG_USB_ETH_RNDIS
+        ./scripts/config --enable CONFIG_USB_DWC3_GADGET
+        ./scripts/config --enable CONFIG_USB_CONFIGFS
+        ./scripts/config --enable CONFIG_USB_CONFIGFS_RNDIS
+        ./scripts/config --enable CONFIG_USB_CONFIGFS_ECM
 
         make olddefconfig
         make -j"$(nproc)" Image dtbs modules
 
-    - name: Build Minimal RootFS (Debian ARM64 + USB Network Service)
+    - name: Build Minimal RootFS (Debian ARM64)
       run: |
         sudo debootstrap --arch=arm64 --foreign bookworm rootfs http://deb.debian.org/debian/
         sudo cp /usr/bin/qemu-aarch64-static rootfs/usr/bin/
@@ -144,28 +157,49 @@ jobs:
           export DEBIAN_FRONTEND=noninteractive
           apt-get update
           apt-get install -y --no-install-recommends \
-            systemd-sysv udev ifupdown network-manager openssh-server sudo nano iproute2 \
+            systemd-sysv udev ifupdown network-manager openssh-server sudo nano \
             kodi kodi-bin kodi-peripheral-joystick libgl1-mesa-dri libegl-mesa0 libgbm1 libgles2 \
-            alsa-utils dbus ca-certificates
+            alsa-utils dbus ca-certificates iproute2
           echo "root:root" | chpasswd
           echo "rk3566-device" > /etc/hostname
           apt-get clean
           rm -rf /var/lib/apt/lists/*
         '
 
-        # Script de inicializacao da interface USB Gadget (usb0 com IP 192.168.7.2)
+        # Script Configfs USB Gadget Ethernet
         sudo bash -c 'cat << "EOF" > rootfs/usr/local/bin/setup-usb-gadget.sh
 #!/bin/sh
-modprobe g_ether host_addr=00:dc:c8:fe:52:99 dev_addr=00:dc:c8:fe:52:88
-while [ ! -d /sys/class/net/usb0 ]; do
-    sleep 0.2
-done
-ip link set dev usb0 up
-ip addr add 192.168.7.2/24 dev usb0
+mount -t configfs none /sys/kernel/config 2>/dev/null || true
+GADGET_DIR="/sys/kernel/config/usb_gadget/g_net"
+
+if [ ! -d "$GADGET_DIR" ]; then
+    mkdir -p "$GADGET_DIR"
+    echo 0x1d6b > "$GADGET_DIR/idVendor"  # Linux Foundation
+    echo 0x0104 > "$GADGET_DIR/idProduct" # Ethernet Gadget
+    mkdir -p "$GADGET_DIR/strings/0x409"
+    echo "123456789" > "$GADGET_DIR/strings/0x409/serialnumber"
+    echo "Powkiddy" > "$GADGET_DIR/strings/0x409/manufacturer"
+    echo "RK3566 USB Network" > "$GADGET_DIR/strings/0x409/product"
+
+    mkdir -p "$GADGET_DIR/functions/rndis.usb0"
+    mkdir -p "$GADGET_DIR/configs/c.1/strings/0x409"
+    echo "RNDIS" > "$GADGET_DIR/configs/c.1/strings/0x409/configuration"
+
+    ln -s "$GADGET_DIR/functions/rndis.usb0" "$GADGET_DIR/configs/c.1/"
+fi
+
+UDC_DEV=$(ls /sys/class/udc 2>/dev/null | head -n1)
+if [ -n "$UDC_DEV" ]; then
+    echo "$UDC_DEV" > "$GADGET_DIR/UDC"
+fi
+
+sleep 1
+ip link set dev usb0 up 2>/dev/null || true
+ip addr add 192.168.7.2/24 dev usb0 2>/dev/null || true
 EOF'
         sudo chmod +x rootfs/usr/local/bin/setup-usb-gadget.sh
 
-        # Servico Systemd do USB Gadget
+        # Servico Systemd
         sudo bash -c 'cat << "EOF" > rootfs/etc/systemd/system/usb-gadget.service
 [Unit]
 Description=USB Ethernet Gadget Setup
@@ -180,9 +214,10 @@ RemainAfterExit=yes
 [Install]
 WantedBy=multi-user.target
 EOF'
+
         sudo chroot rootfs systemctl enable usb-gadget.service
 
-        # Servico Kodi (DRM/GBM)
+        # Servico do Kodi Media Center (DRM/GBM)
         sudo bash -c 'cat << "EOF" > rootfs/etc/systemd/system/kodi.service
 [Unit]
 Description=Kodi Media Center (GBM)
@@ -201,6 +236,7 @@ Restart=always
 [Install]
 WantedBy=multi-user.target
 EOF'
+
         sudo chroot rootfs systemctl enable kodi.service
 
         sudo umount rootfs/dev
@@ -223,7 +259,7 @@ EOF'
         parted -s ${IMAGE_NAME} mkpart primary fat32 16MiB 144MiB
         parted -s ${IMAGE_NAME} mkpart primary ext4 144MiB 100%
 
-        LOOP_DEV=$(losetup -fP --show${IMAGE_NAME})
+        LOOP_DEV=$(losetup -fP --show ${IMAGE_NAME})
         BOOT_DEV="${LOOP_DEV}p1"
         ROOT_DEV="${LOOP_DEV}p2"
 
@@ -266,7 +302,7 @@ BOOTCFG
         losetup -d ${LOOP_DEV}
 
         gzip -f ${IMAGE_NAME}
-EOF
+        EOF
 
     - name: Upload SD Card Image
       uses: actions/upload-artifact@v4
