@@ -67,58 +67,48 @@ jobs:
           cp "$GENERIC_DSI_C" rocknix-panel-generic-dsi.c
         fi
 
-    - name: Build Mainline Kernel
+- name: Build Mainline Kernel
       run: |
         cd kernel
         export ARCH=arm64
         export CROSS_COMPILE=aarch64-linux-gnu-
 
-        for p in ../rocknix-patches/*.patch; do
-          [ -f "$p" ] || continue
-          git apply --reject --whitespace=fix "$p" || true
-        done
-
+        # [Aplica patches e copia DTSs da ROCKNIX aqui...]
         if ls ../rocknix-dts/*.dts* >/dev/null 2>&1; then
           cp ../rocknix-dts/*.dts* arch/arm64/boot/dts/rockchip/
         fi
 
-        MAKEFILE="arch/arm64/boot/dts/rockchip/Makefile"
-        for dtsfile in arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35*.dts \
-                       arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x55.dts; do
-          [ -f "$dtsfile" ] || continue
-          base=$(basename "$dtsfile" .dts)
-          grep -q "${base}\.dtb" "$MAKEFILE" || echo "dtb-\$(CONFIG_ARCH_ROCKCHIP) += ${base}.dtb" >> "$MAKEFILE"
-        done
-
         cp ../rocknix-kernel.config .config
         ./scripts/config --set-str CONFIG_INITRAMFS_SOURCE ""
 
-        # Driver de Painel MIPI-DSI Generico (ROCKNIX)
-        if [ -f ../rocknix-panel-generic-dsi.c ]; then
-          cp ../rocknix-panel-generic-dsi.c drivers/gpu/drm/panel/panel-generic-dsi.c
-          if ! grep -q "panel-generic-dsi.o" drivers/gpu/drm/panel/Makefile; then
-            echo "obj-\$(CONFIG_DRM_PANEL_GENERIC_DSI) += panel-generic-dsi.o" >> drivers/gpu/drm/panel/Makefile
-          fi
-          ./scripts/config --enable CONFIG_DRM
-          ./scripts/config --enable CONFIG_DRM_MIPI_DSI
-          ./scripts/config --enable CONFIG_DRM_PANEL_GENERIC_DSI
-        fi
+        # FORÇAR MODO PERIPHERAL NOS DEVICETREES DA FAMÍLIA RK3566
+        for dts in arch/arm64/boot/dts/rockchip/rk3566-powkiddy-*.dts; do
+          [ -f "$dts" ] || continue
+          echo "--> Forçando dr_mode = peripheral em $dts"
+          cat << 'EOF_DTS' >> "$dts"
 
-        # Drivers de Botoes e Controles
-        ./scripts/config --enable CONFIG_JOYSTICK_ADC
-        ./scripts/config --enable CONFIG_KEYBOARD_GPIO
-        ./scripts/config --enable CONFIG_KEYBOARD_ADC
-        ./scripts/config --enable CONFIG_INPUT_JOYSTICK
-        ./scripts/config --enable CONFIG_INPUT_EVDEV
+&usbdrd_dwc3_0 {
+	dr_mode = "peripheral";
+	status = "okay";
+};
+&usb2phy0_otg {
+	status = "okay";
+};
+EOF_DTS
+        done
 
-        # Módulos USB Gadget Ethernet (Rede via cabo USB-C)
+        # DRIVERS DE PHY ROCKCHIP (OBRIGATÓRIO SER BUILT-IN =y)
+        ./scripts/config --enable CONFIG_PHY_ROCKCHIP_INNO_USB2
+        ./scripts/config --enable CONFIG_PHY_ROCKCHIP_NANENG_COMBPHY
+        ./scripts/config --enable CONFIG_NOP_USB_XCEIV
+
+        # CONFIGFS E USB GADGET MODERNO
         ./scripts/config --enable CONFIG_USB_GADGET
         ./scripts/config --enable CONFIG_USB_DWC3
-        ./scripts/config --enable CONFIG_USB_DWC3_DUAL_ROLE
-        ./scripts/config --enable CONFIG_USB_ROLE_SWITCH
-        ./scripts/config --module CONFIG_USB_LIBCOMPOSITE
-        ./scripts/config --module CONFIG_USB_ETH
-        ./scripts/config --enable CONFIG_USB_ETH_RNDIS
+        ./scripts/config --enable CONFIG_USB_DWC3_GADGET
+        ./scripts/config --enable CONFIG_USB_CONFIGFS
+        ./scripts/config --enable CONFIG_USB_CONFIGFS_RNDIS
+        ./scripts/config --enable CONFIG_USB_CONFIGFS_ECM
 
         make olddefconfig
         make -j"$(nproc)" Image dtbs modules
@@ -145,6 +135,39 @@ jobs:
           apt-get clean
           rm -rf /var/lib/apt/lists/*
         '
+# Script Configfs para criar a placa de rede USB virtual no boot
+        sudo bash -c 'cat << "EOF" > rootfs/usr/local/bin/setup-usb-gadget.sh
+#!/bin/sh
+mount -t configfs none /sys/kernel/config 2>/dev/null || true
+GADGET_DIR="/sys/kernel/config/usb_gadget/g_net"
+
+if [ ! -d "$GADGET_DIR" ]; then
+    mkdir -p "$GADGET_DIR"
+    echo 0x1d6b > "$GADGET_DIR/idVendor"  # Linux Foundation
+    echo 0x0104 > "$GADGET_DIR/idProduct" # Ethernet Gadget
+    mkdir -p "$GADGET_DIR/strings/0x409"
+    echo "123456789" > "$GADGET_DIR/strings/0x409/serialnumber"
+    echo "Powkiddy" > "$GADGET_DIR/strings/0x409/manufacturer"
+    echo "RK3566 USB Network" > "$GADGET_DIR/strings/0x409/product"
+
+    mkdir -p "$GADGET_DIR/functions/rndis.usb0"
+    mkdir -p "$GADGET_DIR/configs/c.1/strings/0x409"
+    echo "RNDIS" > "$GADGET_DIR/configs/c.1/strings/0x409/configuration"
+
+    ln -s "\(GADGET_DIR/functions/rndis.usb0" "\)GADGET_DIR/configs/c.1/"
+fi
+
+# Vincula o gadget ao controlador UDC DWC3
+UDC_DEV=$(ls /sys/class/udc | head -n1)
+if [ -n "$UDC_DEV" ]; then
+    echo "\(UDC_DEV" > "\)GADGET_DIR/UDC"
+fi
+
+sleep 1
+ip link set dev usb0 up 2>/dev/null || true
+ip addr add 192.168.7.2/24 dev usb0 2>/dev/null || true
+EOF'
+        sudo chmod +x rootfs/usr/local/bin/setup-usb-gadget.sh
 
         # Script para subir o USB Gadget Ethernet com IP Fixo 192.168.7.2
         sudo bash -c 'cat << "EOF" > rootfs/usr/local/bin/setup-usb-gadget.sh
