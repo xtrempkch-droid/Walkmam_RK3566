@@ -315,6 +315,56 @@ jobs:
         ExecStart=-/sbin/agetty --autologin root --noclear %I $TERM
         EOF'
 
+        echo "--> Criando serviço que salva diagnóstico (dmesg, USB, input) no cartão SD"
+        echo "--> a cada boot — assim dá pra ler no PC sem precisar de serial/rede/solda."
+        sudo bash -c 'cat << "EOF" > rootfs/usr/local/bin/dump-diagnostico.sh
+        #!/bin/sh
+        # Espera alguns segundos pro boot terminar e USB ter tempo de negociar
+        sleep 15
+        OUT=/boot/diagnostico.txt
+        {
+          echo "===== $(date) ====="
+          echo
+          echo "----- dmesg (log do kernel) -----"
+          dmesg
+          echo
+          echo "----- /proc/bus/input/devices (botoes/analogico) -----"
+          cat /proc/bus/input/devices
+          echo
+          echo "----- lsmod (modulos carregados) -----"
+          lsmod
+          echo
+          echo "----- /sys/class/udc (controlador USB em modo gadget) -----"
+          ls -la /sys/class/udc/ 2>&1
+          echo
+          echo "----- ip addr (interfaces de rede) -----"
+          ip addr
+          echo
+          echo "----- journalctl -u kodi (ultimas 100 linhas) -----"
+          journalctl -u kodi -n 100 --no-pager
+        } > "$OUT" 2>&1
+        EOF'
+        sudo chmod +x rootfs/usr/local/bin/dump-diagnostico.sh
+
+        sudo bash -c 'cat << "EOF" > rootfs/etc/systemd/system/dump-diagnostico.service
+        [Unit]
+        Description=Salva diagnostico de boot no cartao SD (boot partition)
+        After=multi-user.target
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/local/bin/dump-diagnostico.sh
+
+        [Install]
+        WantedBy=multi-user.target
+        EOF'
+        sudo chroot rootfs systemctl enable dump-diagnostico.service
+
+        echo "--> Garantindo que a partição de boot (FAT) esteja montada em /boot no sistema,"
+        echo "--> senão o script acima não tem onde escrever:"
+        sudo bash -c 'echo "LABEL=BOOT /boot vfat defaults 0 0" >> rootfs/etc/fstab'
+        sudo mkdir -p rootfs/boot
+
         echo "--> Instalando Kodi (GBM, sem X11) e dependências gráficas/áudio..."
         sudo chroot rootfs bash -c '
           export DEBIAN_FRONTEND=noninteractive
