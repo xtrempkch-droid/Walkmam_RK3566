@@ -159,6 +159,11 @@ jobs:
           printf '\n&hdmi {\n\tstatus = "disabled";\n};\n' >> arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dts
         fi
 
+        echo "--> Checando modo da porta USB (precisa ser 'otg'/'peripheral', não fixo em 'host',"
+        echo "--> pra podermos usar 'USB gadget ethernet' e fazer SSH sem WiFi/Bluetooth)..."
+        grep -n 'dr_mode' arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dts || \
+          echo "--> Nenhum 'dr_mode' explícito no .dts da X35S (provavelmente herda do .dtsi base — ok na maioria dos casos, a ROCKNIX confirma suporte a gadget nessa família)."
+
         echo "--> Usando o .config real da ROCKNIX para RK3566 como base..."
         cp ../rocknix-kernel.config .config
 
@@ -256,6 +261,16 @@ jobs:
         ./scripts/config --enable CONFIG_KEYBOARD_ADC
         ./scripts/config --enable CONFIG_INPUT_JOYSTICK
         ./scripts/config --enable CONFIG_INPUT_EVDEV
+
+        echo "--> Habilitando USB gadget ethernet (g_ether) pra SSH via cabo USB-C,"
+        echo "--> já que a X35H não tem WiFi/Bluetooth:"
+        ./scripts/config --enable CONFIG_USB_GADGET
+        ./scripts/config --module CONFIG_USB_ETH
+        ./scripts/config --enable CONFIG_USB_LIBCOMPOSITE
+        ./scripts/config --enable CONFIG_USB_DWC3
+        ./scripts/config --enable CONFIG_USB_DWC3_DUAL_ROLE
+        ./scripts/config --enable CONFIG_USB_ROLE_SWITCH
+
         make olddefconfig
         make -j"$(nproc)" Image modules
 
