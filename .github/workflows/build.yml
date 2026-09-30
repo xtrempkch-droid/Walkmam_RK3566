@@ -164,6 +164,11 @@ jobs:
         grep -n 'dr_mode' arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dts || \
           echo "--> Nenhum 'dr_mode' explícito no .dts da X35S (provavelmente herda do .dtsi base — ok na maioria dos casos, a ROCKNIX confirma suporte a gadget nessa família)."
 
+        echo "--> DIAGNÓSTICO: conteúdo COMPLETO do rk3566-powkiddy-x35s.dts (pra achar"
+        echo "--> se existe nó de botões/analógico que não está sendo reconhecido, ou se"
+        echo "--> realmente não existe no patch que a ROCKNIX nos deu):"
+        cat -n arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dts
+
         echo "--> Usando o .config real da ROCKNIX para RK3566 como base..."
         cp ../rocknix-kernel.config .config
 
@@ -359,6 +364,44 @@ jobs:
         WantedBy=multi-user.target
         EOF'
         sudo chroot rootfs systemctl enable dump-diagnostico.service
+
+        echo "--> Criando serviço que ativa o USB gadget ethernet no boot (g_ether),"
+        echo "--> já que o driver estava habilitado no kernel mas nunca era carregado."
+        sudo bash -c 'cat << "EOF" > rootfs/usr/local/bin/setup-usb-gadget.sh
+        #!/bin/sh
+        # g_ether cria a interface usb0 sozinho ao carregar, sem precisar
+        # montar configfs manualmente. host_addr/dev_addr fixos evitam MAC
+        # aleatório (facilita configurar o lado do PC, se precisar).
+        modprobe g_ether dev_addr=02:00:00:00:00:01 host_addr=02:00:00:00:00:02
+        sleep 2
+        ip link set dev usb0 up 2>/dev/null || true
+        ip addr add 10.55.0.1/24 dev usb0 2>/dev/null || true
+        EOF'
+        sudo chmod +x rootfs/usr/local/bin/setup-usb-gadget.sh
+
+        sudo bash -c 'cat << "EOF" > rootfs/etc/systemd/system/usb-gadget.service
+        [Unit]
+        Description=USB Ethernet Gadget (g_ether) para SSH via cabo USB-C
+        After=sys-kernel-config.mount
+        Before=ssh.service
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/local/bin/setup-usb-gadget.sh
+        RemainAfterExit=yes
+
+        [Install]
+        WantedBy=multi-user.target
+        EOF'
+        sudo chroot rootfs systemctl enable usb-gadget.service
+
+        echo "--> Impedindo o NetworkManager de gerenciar a usb0 (senão ele pode"
+        echo "--> sobrescrever o IP fixo que o script de gadget configurou)."
+        sudo mkdir -p rootfs/etc/NetworkManager/conf.d
+        sudo bash -c 'cat << "EOF" > rootfs/etc/NetworkManager/conf.d/99-unmanaged-usb0.conf
+        [keyfile]
+        unmanaged-devices=interface-name:usb0
+        EOF'
 
         echo "--> Garantindo que a partição de boot (FAT) esteja montada em /boot no sistema,"
         echo "--> senão o script acima não tem onde escrever:"
