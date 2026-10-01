@@ -315,8 +315,30 @@ jobs:
             sudo cp "$FOUND_DTB" rocknix-official-x35s.dtb
             sudo chown $(id -u):$(id -g) rocknix-official-x35s.dtb
 
-            echo "--> Decompilando pra inspeção (diagnóstico, não usado na compilação):"
+            echo "--> Decompilando pra inspeção (diagnóstico):"
             dtc -I dtb -O dts rocknix-official-x35s.dtb 2>/dev/null | grep -A3 -i 'joystick\|gpio-keys\|usbdrd\|usb2phy' | head -150
+
+            echo "--> Esse .dtb tem DSI e HDMI habilitados ao mesmo tempo, competindo pelo"
+            echo "--> mesmo VOP2 — isso trava a saída de vídeo (confirmado em teste real:"
+            echo "--> 'Failed to register component: -517' + 'POST_BUF_EMPTY irq err at vp1')."
+            echo "--> Desabilitando o nó hdmi@fe0a0000 e recompilando o .dtb:"
+            dtc -I dtb -O dts -o rocknix-official-x35s.dts rocknix-official-x35s.dtb 2>/dev/null
+            awk '
+              /hdmi@fe0a0000[ \t]*\{/ { inblk=1; depth=1; print; next }
+              inblk {
+                n=gsub(/\{/,"{"); depth+=n
+                n=gsub(/\}/,"}"); depth-=n
+                if ($0 ~ /status = "okay";/) { sub(/status = "okay";/, "status = \"disabled\";") }
+                print
+                if (depth<=0) inblk=0
+                next
+              }
+              { print }
+            ' rocknix-official-x35s.dts > rocknix-official-x35s.dts.new
+            mv rocknix-official-x35s.dts.new rocknix-official-x35s.dts
+            dtc -I dts -O dtb -o rocknix-official-x35s.dtb rocknix-official-x35s.dts 2>&1 | tail -20
+            echo "--> Confirmando que a mudança entrou:"
+            dtc -I dtb -O dts rocknix-official-x35s.dtb 2>/dev/null | grep -A2 'hdmi@fe0a0000'
           else
             echo "!!! .dtb da X35S não encontrado dentro do release (procure manualmente)."
             sudo find /mnt/rocknix-boot -iname '*.dtb' | sort
@@ -387,6 +409,9 @@ jobs:
           echo
           echo "----- journalctl -u kodi (ultimas 100 linhas) -----"
           journalctl -u kodi -n 100 --no-pager
+          echo
+          echo "----- /root/.kodi/temp/kodi.log (log interno do Kodi, GBM/DRM) -----"
+          cat /root/.kodi/temp/kodi.log 2>&1 || echo "(arquivo não existe ainda)"
         } > "$OUT" 2>&1
         EOF'
         sudo chmod +x rootfs/usr/local/bin/dump-diagnostico.sh
