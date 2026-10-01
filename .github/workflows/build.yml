@@ -286,6 +286,46 @@ jobs:
           echo "!!! encontra o FDT e o aparelho fica com tela preta (nenhum 'sistema' visível)."
         fi
 
+    - name: Fetch Official ROCKNIX .dtb (X35S) as authoritative reference
+      run: |
+        echo "--> Nosso .dts da X35S está incompleto (sem botões/analógico, USB com erro)."
+        echo "--> Baixando o release oficial mais recente da ROCKNIX pra pegar o .dtb"
+        echo "--> REAL e comprovadamente funcional que eles usam em produção."
+
+        LATEST_JSON=$(curl -s https://api.github.com/repos/ROCKNIX/distribution/releases/latest)
+        ASSET_URL=$(echo "$LATEST_JSON" | grep -oP '"browser_download_url":\s*"\K[^"]*RK3566[^"]*Specific\.img\.gz' | head -n1)
+        echo "--> URL do asset encontrado: $ASSET_URL"
+
+        if [ -z "$ASSET_URL" ]; then
+          echo "!!! Não consegui achar o asset 'Specific' do RK3566 no release mais recente."
+          echo "!!! Prosseguindo sem o .dtb de referência (fica só o nosso, incompleto)."
+        else
+          wget -q "$ASSET_URL" -O rocknix-release.img.gz
+          gunzip -f rocknix-release.img.gz
+
+          LOOP_DEV=$(sudo losetup -fP --show rocknix-release.img)
+          sudo mkdir -p /mnt/rocknix-boot
+          sudo mount "${LOOP_DEV}p1" /mnt/rocknix-boot
+
+          echo "--> Procurando o .dtb da X35S dentro do release..."
+          FOUND_DTB=$(sudo find /mnt/rocknix-boot -iname '*x35s*.dtb' | head -n1)
+          echo "Encontrado: $FOUND_DTB"
+
+          if [ -n "$FOUND_DTB" ]; then
+            sudo cp "$FOUND_DTB" rocknix-official-x35s.dtb
+            sudo chown $(id -u):$(id -g) rocknix-official-x35s.dtb
+
+            echo "--> Decompilando pra inspeção (diagnóstico, não usado na compilação):"
+            dtc -I dtb -O dts rocknix-official-x35s.dtb 2>/dev/null | grep -A3 -i 'joystick\|gpio-keys\|usbdrd\|usb2phy' | head -150
+          else
+            echo "!!! .dtb da X35S não encontrado dentro do release (procure manualmente)."
+            sudo find /mnt/rocknix-boot -iname '*.dtb' | sort
+          fi
+
+          sudo umount /mnt/rocknix-boot
+          sudo losetup -d "$LOOP_DEV"
+        fi
+
     - name: Build Minimal RootFS (Debian ARM64)
       run: |
         echo "--> Criando RootFS base Debian ARM64..."
@@ -493,17 +533,36 @@ jobs:
         cp kernel/arch/arm64/boot/Image /mnt/boot/
         mkdir -p /mnt/boot/dtbs
         cp kernel/arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x55.dtb /mnt/boot/dtbs/
-        cp kernel/arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dtb /mnt/boot/dtbs/ 2>/dev/null || \
-          echo "!!! rk3566-powkiddy-x35s.dtb não encontrado neste kernel — X35S/X35H ficarão sem suporte nesta imagem."
+        cp kernel/arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dtb /mnt/boot/dtbs/rk3566-powkiddy-x35s-nosso.dtb 2>/dev/null || true
+
+        X35S_DEFAULT="dtbs/rk3566-powkiddy-x35s-nosso.dtb"
+        if [ -f rocknix-official-x35s.dtb ]; then
+          echo "--> Usando o .dtb OFICIAL da ROCKNIX como padrão pra X35S/X35H (mais completo:"
+          echo "--> tem botões/analógico e USB funcionando, confirmados no release deles)."
+          cp rocknix-official-x35s.dtb /mnt/boot/dtbs/rk3566-powkiddy-x35s-rocknix.dtb
+          X35S_DEFAULT="dtbs/rk3566-powkiddy-x35s-rocknix.dtb"
+        else
+          echo "!!! .dtb oficial da ROCKNIX não foi obtido — usando o nosso (incompleto: sem"
+          echo "!!! botões/analógico, USB com erro de ep0out)."
+        fi
 
         echo "--> Criando extlinux.conf (padrão: X35H/X35S — troque a linha FDT p/ X55)..."
         mkdir -p /mnt/boot/extlinux
-        cat << "BOOTCFG" > /mnt/boot/extlinux/extlinux.conf
+        cat << BOOTCFG > /mnt/boot/extlinux/extlinux.conf
         LABEL Mainline (Powkiddy X35H / X35S)
             KERNEL /Image
-            FDT /dtbs/rk3566-powkiddy-x35s.dtb
+            FDT /${X35S_DEFAULT}
             APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw
         BOOTCFG
+
+        # Referência: variante usando o nosso próprio .dtb compilado, caso o
+        # oficial da ROCKNIX dê algum problema de incompatibilidade.
+        cat << "BOOTCFG3" > /mnt/boot/extlinux/extlinux.conf.x35s-nosso
+        LABEL Mainline (X35S - nosso .dtb)
+            KERNEL /Image
+            FDT /dtbs/rk3566-powkiddy-x35s-nosso.dtb
+            APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw
+        BOOTCFG3
 
         # Referência p/ X55: mesma imagem, só troca o FDT. Salvamos como
         # arquivo à parte (não ativo) — é só copiar o conteúdo por cima do
