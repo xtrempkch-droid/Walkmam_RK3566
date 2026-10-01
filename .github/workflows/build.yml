@@ -237,12 +237,28 @@ jobs:
         echo "--> Integrando o driver de botões/analógico (rocknix-joypad)..."
         if [ -d ../rocknix-joypad-src ]; then
           mkdir -p drivers/input/joystick
-          for f in ../rocknix-joypad-src/*.c ../rocknix-joypad-src/*.h; do
-            [ -f "$f" ] || continue
-            cp "$f" drivers/input/joystick/
-          done
 
-          for c in drivers/input/joystick/rocknix-joypad.c drivers/input/joystick/rocknix-singleadc-joypad.c; do
+          # A X35S usa esquema de ADC único (rocknix-singleadc-joypad.c).
+          # O rocknix-joypad.c "genérico" (multi-botão via MCU) é pra OUTROS
+          # dispositivos e, na nossa versão clonada, ainda usa a API antiga
+          # <linux/input-polldev.h> (removida do kernel há tempos) — por isso
+          # excluímos ele da compilação, evitando o erro sem perder nada que
+          # a gente realmente precisa.
+          cp ../rocknix-joypad-src/rocknix-singleadc-joypad.c drivers/input/joystick/ 2>/dev/null
+          cp ../rocknix-joypad-src/*.h drivers/input/joystick/ 2>/dev/null
+
+          echo "--> Checando se o rocknix-singleadc-joypad.c usa alguma API antiga/removida:"
+          grep -n 'input-polldev\|input_polled_dev\|input_allocate_polled' drivers/input/joystick/rocknix-singleadc-joypad.c 2>/dev/null || \
+            echo "--> Nada encontrado (bom sinal)."
+
+          echo "--> Checando se o header compartilhado ainda referencia input-polldev.h..."
+          if grep -l 'input-polldev' drivers/input/joystick/rocknix-joypad.h 2>/dev/null; then
+            echo "!!! Header também usa a API antiga — removendo o include problemático"
+            echo "!!! (pode gerar warnings, mas evita o erro fatal de compilação)."
+            sed -i '/#include <linux\/input-polldev.h>/d' drivers/input/joystick/rocknix-joypad.h
+          fi
+
+          for c in drivers/input/joystick/rocknix-singleadc-joypad.c; do
             [ -f "$c" ] || continue
             base=$(basename "$c" .c)
             obj="${base}.o"
@@ -288,6 +304,18 @@ jobs:
           echo "!!! rocknix-joypad-src não encontrado — botões/analógico não vão funcionar"
           echo "!!! mesmo que o .dts tenha o nó certo, porque falta o driver."
         fi
+
+        echo "--> Blindagem: removendo rocknix-joypad.c (usa input-polldev.h, API que não"
+        echo "--> existe mais no kernel 6.12) e qualquer linha dele no Makefile, venha de"
+        echo "--> onde vier (cópia antiga ou patch da ROCKNIX)."
+        rm -f drivers/input/joystick/rocknix-joypad.c
+        sed -i '/rocknix-joypad\.o/d' drivers/input/joystick/Makefile
+        echo "--> Linhas rocknix no Makefile de joystick agora:"
+        grep -n 'rocknix' drivers/input/joystick/Makefile || echo "(nenhuma)"
+        echo "--> Arquivos rocknix em drivers/input/joystick:"
+        ls -la drivers/input/joystick/ | grep -i rocknix || echo "(nenhum)"
+        echo "--> Algum arquivo ainda usa input-polldev.h?"
+        grep -rl 'input-polldev' drivers/input/joystick/ || echo "(nenhum — ok)"
 
         # "make dtbs" compila TODOS os device trees da plataforma Rockchip de
         # uma vez (não é filtrado por defconfig) — então X55 e X35S saem
