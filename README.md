@@ -36,7 +36,7 @@ docs/                     build, arquitetura e porting
 | `powkiddy-x35s` | Powkiddy X35S | DTS/DTB de referência ROCKNIX; em investigação |
 | `powkiddy-x35h` | Powkiddy X35H | Sem DTS/DTB independente validado |
 
-A variante atualmente configurada é `kodi` (Debian Bookworm + Kodi/GBM). Valores de pinagem, GPIO e display não são inferidos; consulte `docs/porting.md` antes de adicionar hardware.
+A variante atualmente configurada é `kodi` (Debian Bookworm + Weston/Wayland). O teste no Powkiddy X55 revelou tela preta com erros no caminho DSI/VOP; o workflow desabilita HDMI como workaround experimental, conforme `docs/build.md`. Valores de pinagem, GPIO e display não são inferidos; consulte `docs/porting.md` antes de adicionar hardware.
 
 `variants/own/` permanece como scaffold planejado: não contém pacotes nem overlay instalável e o empacotador recusa essa variante até que seja implementada.
 

@@ -36,6 +36,26 @@ read_config_value() {
     sed -n "s/^${key}=//p" "$file"
 }
 
+resolve_repo_path() {
+    local raw_path=$1
+    local label=$2
+
+    if [[ -z $raw_path ]]; then
+        echo "Required path for $label is empty." >&2
+        return 1
+    fi
+    if [[ $raw_path == *".."* ]]; then
+        echo "Path traversal is not allowed for $label: $raw_path" >&2
+        return 1
+    fi
+
+    if [[ $raw_path == /* ]]; then
+        printf '%s\n' "$raw_path"
+    else
+        printf '%s\n' "$ROOT_DIR/$raw_path"
+    fi
+}
+
 if [[ ! -f $DEVICE_CONFIG ]]; then
     echo "Unknown device '$DEVICE' (expected $DEVICE_CONFIG)." >&2
     exit 2
@@ -75,10 +95,10 @@ if [[ ! -f $ROOT_DIR/variants/$VARIANT/$PACKAGE_MANIFEST ]]; then
     exit 2
 fi
 
-UBOOT_DIR=${WALKMAN_UBOOT_DIR:-uboot}
-KERNEL_DIR=${WALKMAN_KERNEL_DIR:-kernel}
-ROOTFS_DIR=${WALKMAN_ROOTFS_DIR:-rootfs}
-OUTPUT_DIR=${WALKMAN_OUTPUT_DIR:-output}
+UBOOT_DIR=$(resolve_repo_path "${WALKMAN_UBOOT_DIR:-uboot}" "WALKMAN_UBOOT_DIR") || exit 1
+KERNEL_DIR=$(resolve_repo_path "${WALKMAN_KERNEL_DIR:-kernel}" "WALKMAN_KERNEL_DIR") || exit 1
+ROOTFS_DIR=$(resolve_repo_path "${WALKMAN_ROOTFS_DIR:-rootfs}" "WALKMAN_ROOTFS_DIR") || exit 1
+OUTPUT_DIR=$(resolve_repo_path "${WALKMAN_OUTPUT_DIR:-output}" "WALKMAN_OUTPUT_DIR") || exit 1
 IMAGE_NAME=${WALKMAN_IMAGE_NAME:-walkmam-${DEVICE}-${VARIANT}.img}
 if [[ ! $IMAGE_NAME =~ ^[a-zA-Z0-9._-]+\.img$ ]]; then
     echo "WALKMAN_IMAGE_NAME must be a filename ending in .img." >&2
@@ -92,7 +112,11 @@ for directory in "$UBOOT_DIR" "$KERNEL_DIR" "$ROOTFS_DIR"; do
     fi
 done
 
-DTB_SOURCE=${WALKMAN_DTB_SOURCE:-"$KERNEL_DIR/arch/arm64/boot/dts/rockchip/$DTB_NAME"}
+if [[ -n ${WALKMAN_DTB_SOURCE:-} ]]; then
+    DTB_SOURCE=$(resolve_repo_path "$WALKMAN_DTB_SOURCE" "WALKMAN_DTB_SOURCE") || exit 1
+else
+    DTB_SOURCE="$KERNEL_DIR/arch/arm64/boot/dts/rockchip/$DTB_NAME"
+fi
 if [[ ! -f $DTB_SOURCE ]]; then
     echo "Required DTB not found: $DTB_SOURCE" >&2
     exit 1

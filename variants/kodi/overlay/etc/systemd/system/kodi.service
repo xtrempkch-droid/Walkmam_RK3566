@@ -1,5 +1,7 @@
 [Unit]
-Description=Kodi Media Center (GBM)
+Description=Kodi Media Center (Weston/Wayland)
+StartLimitIntervalSec=60
+StartLimitBurst=5
 After=systemd-user-sessions.service systemd-udev-settle.service sound.target
 Conflicts=getty@tty1.service
 After=getty@tty1.service
@@ -11,9 +13,9 @@ Environment=KODI_AE_SINK=ALSA
 TTYPath=/dev/tty1
 StandardInput=tty
 StandardOutput=journal
-ExecStart=/usr/bin/kodi --standalone --windowing=gbm
+ExecStart=/usr/local/bin/start-kodi-wayland.sh
 Restart=always
-RestartSec=3
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target

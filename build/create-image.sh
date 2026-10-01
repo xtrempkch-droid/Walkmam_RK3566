@@ -19,6 +19,8 @@ BOOT_MOUNT=
 ROOT_MOUNT=
 LOOP_DEV=
 MOUNT_DIR=
+CREATED_BOOT_DEV=0
+CREATED_ROOT_DEV=0
 
 for file in \
     "$UBOOT_DIR/idbloader.img" \
@@ -49,18 +51,25 @@ fi
 cleanup() {
     local exit_code=$?
     set +e
-    if [[ -n $BOOT_MOUNT ]]; then
+    if [[ -n ${BOOT_MOUNT:-} ]]; then
         umount "$BOOT_MOUNT" 2>/dev/null
     fi
-    if [[ -n $ROOT_MOUNT ]]; then
+    if [[ -n ${ROOT_MOUNT:-} ]]; then
         umount "$ROOT_MOUNT" 2>/dev/null
     fi
-    if [[ -n $LOOP_DEV ]]; then
+    if [[ -n ${LOOP_DEV:-} ]]; then
         losetup -d "$LOOP_DEV" 2>/dev/null
     fi
-    if [[ -n $MOUNT_DIR ]]; then
+    if [[ ${CREATED_BOOT_DEV:-0} -eq 1 ]]; then
+        rm -f -- "$BOOT_DEV"
+    fi
+    if [[ ${CREATED_ROOT_DEV:-0} -eq 1 ]]; then
+        rm -f -- "$ROOT_DEV"
+    fi
+    if [[ -n ${MOUNT_DIR:-} ]]; then
         rmdir "$MOUNT_DIR/boot" "$MOUNT_DIR/rootfs" "$MOUNT_DIR" 2>/dev/null
     fi
+    trap - EXIT
     exit "$exit_code"
 }
 trap cleanup EXIT
@@ -83,6 +92,29 @@ for _ in {1..20}; do
     [[ -b $BOOT_DEV && -b $ROOT_DEV ]] && break
     sleep 0.25
 done
+create_partition_device() {
+    local partition=$1
+    local device=$2
+    local sysfs_dev="/sys/block/${LOOP_DEV##*/}/${LOOP_DEV##*/}p${partition}/dev"
+    local major
+    local minor
+
+    [[ -b $device ]] && return 0
+    if [[ ! -r $sysfs_dev ]]; then
+        return 1
+    fi
+
+    IFS=: read -r major minor < "$sysfs_dev"
+    mknod -- "$device" b "$major" "$minor"
+    [[ -b $device ]]
+}
+
+if [[ ! -b $BOOT_DEV ]]; then
+    create_partition_device 1 "$BOOT_DEV" && CREATED_BOOT_DEV=1
+fi
+if [[ ! -b $ROOT_DEV ]]; then
+    create_partition_device 2 "$ROOT_DEV" && CREATED_ROOT_DEV=1
+fi
 if [[ ! -b $BOOT_DEV || ! -b $ROOT_DEV ]]; then
     echo "Partition devices were not created for $LOOP_DEV." >&2
     exit 1
@@ -127,15 +159,20 @@ if [[ -f $BOOT_MOUNT/dtbs/rk3566-powkiddy-x55.dtb ]]; then
 LABEL Mainline (Powkiddy X55)
     KERNEL /Image
     FDT /dtbs/rk3566-powkiddy-x55.dtb
-    APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw
+    APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw walkmam_x55_gamepad=rocknix-v1
 BOOTCFG
+fi
+
+BOOT_MARKER=
+if [[ $DEVICE == powkiddy-x55 ]]; then
+    BOOT_MARKER=" walkmam_x55_gamepad=rocknix-v1"
 fi
 
 cat > "$BOOT_MOUNT/extlinux/extlinux.conf" << BOOTCFG
 LABEL Walkmam ($DEVICE - $VARIANT)
     KERNEL /Image
     FDT /dtbs/$DTB_NAME
-    APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw
+    APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw$BOOT_MARKER
 BOOTCFG
 
 cp -a "$ROOTFS_DIR"/. "$ROOT_MOUNT"/
