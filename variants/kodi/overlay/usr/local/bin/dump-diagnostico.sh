@@ -4,6 +4,19 @@ OUT=/boot/diagnostico.txt
 {
   echo "===== $(date) ====="
   echo
+  echo "----- /proc/cmdline (imagem e parametros de boot) -----"
+  cat /proc/cmdline
+  echo
+  echo "----- nós de entrada do device tree em uso -----"
+  for node in rocknix-joypad gpio-keys-gamepad adc-joystick; do
+    path="/proc/device-tree/$node"
+    if [ -d "$path" ]; then
+      printf '%s: ' "$node"
+      tr '\000' ' ' < "$path/compatible"
+      echo
+    fi
+  done
+  echo
   echo "----- dmesg (log do kernel) -----"
   dmesg
   echo
@@ -19,9 +32,18 @@ OUT=/boot/diagnostico.txt
   echo "----- ip addr (interfaces de rede) -----"
   ip addr
   echo
-  echo "----- journalctl -u kodi (ultimas 100 linhas) -----"
-  journalctl -u kodi -n 100 --no-pager
+  echo "----- systemctl status kodi -----"
+  systemctl status kodi.service --no-pager -l
   echo
-  echo "----- /root/.kodi/temp/kodi.log (log interno do Kodi, GBM/DRM) -----"
+  echo "----- journalctl -b -u kodi (ultimas 100 linhas) -----"
+  journalctl -b -u kodi -n 100 --no-pager
+  echo
+  echo "----- /var/log/weston.log (compositor DRM/Wayland) -----"
+  cat /var/log/weston.log 2>&1 || echo "(arquivo não existe ainda)"
+  echo
+  echo "----- dispositivos DRM -----"
+  ls -la /dev/dri/ 2>&1
+  echo
+  echo "----- /root/.kodi/temp/kodi.log (log interno do Kodi) -----"
   cat /root/.kodi/temp/kodi.log 2>&1 || echo "(arquivo não existe ainda)"
 } > "$OUT" 2>&1

@@ -1,6 +1,7 @@
 kodi
 kodi-bin
 kodi-peripheral-joystick
+weston
 libgl1-mesa-dri
 libegl-mesa0
 libgbm1
