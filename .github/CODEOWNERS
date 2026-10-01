@@ -1,0 +1,19 @@
+# Code Owners
+
+# Default owners
+* @xtrempkch-droid
+
+# Powkiddy device owners
+/devices/powkiddy-x55/ @xtrempkch-droid
+/devices/powkiddy-x35s/ @xtrempkch-droid
+/devices/powkiddy-x35h/ @xtrempkch-droid
+
+# Variant owners
+/variants/kodi/ @xtrempkch-droid
+/variants/own/ @xtrempkch-droid
+
+# Build system
+/build/ @xtrempkch-droid
+
+# Documentation
+/docs/ @xtrempkch-droid
