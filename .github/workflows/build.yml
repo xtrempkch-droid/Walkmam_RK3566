@@ -1,3 +1,4 @@
+name: Build Mainline RK3566 (Powkiddy X55) OS
 
 on:
   push:
@@ -114,10 +115,16 @@ jobs:
         LINUX_PKGMK=$(find rocknix-src -path '*packages/linux/package.mk' | head -n1)
         echo "Encontrado: $LINUX_PKGMK"
         if [ -n "$LINUX_PKGMK" ]; then
-          echo "--> Trecho relevante (post_patch / panel-generic-dsi):"
-          grep -n -B2 -A20 'generic-dsi\|post_patch' "$LINUX_PKGMK" | head -n 100
+          echo "--> Trecho relevante (post_patch / panel-generic-dsi / joypad):"
+          grep -n -B2 -A20 'generic-dsi\|post_patch\|joypad' "$LINUX_PKGMK" | head -n 150
           cp "$LINUX_PKGMK" rocknix-linux-package.mk
         fi
+
+        echo "--> Clonando ROCKNIX/rocknix-joypad (driver de botões/analógico — repositório"
+        echo "--> SEPARADO do distribution, por isso nunca apareceu nas buscas anteriores)."
+        git clone --depth 1 https://github.com/ROCKNIX/rocknix-joypad.git rocknix-joypad-src || \
+          echo "!!! Falha ao clonar rocknix-joypad — botões não poderão ser integrados."
+        ls -la rocknix-joypad-src/ 2>/dev/null
 
     - name: Build Mainline Kernel
       run: |
@@ -227,6 +234,61 @@ jobs:
           echo "!!! porque o compatible \"rocknix,generic-dsi\" não tem driver nenhum."
         fi
 
+        echo "--> Integrando o driver de botões/analógico (rocknix-joypad)..."
+        if [ -d ../rocknix-joypad-src ]; then
+          mkdir -p drivers/input/joystick
+          for f in ../rocknix-joypad-src/*.c ../rocknix-joypad-src/*.h; do
+            [ -f "$f" ] || continue
+            cp "$f" drivers/input/joystick/
+          done
+
+          for c in drivers/input/joystick/rocknix-joypad.c drivers/input/joystick/rocknix-singleadc-joypad.c; do
+            [ -f "$c" ] || continue
+            base=$(basename "$c" .c)
+            obj="${base}.o"
+
+            # Tenta achar o nome real da CONFIG_ no package.mk; senão usa um
+            # nome padrão baseado no arquivo (JOYSTICK_ROCKNIX / _SINGLEADC).
+            CFG=""
+            if [ -f ../rocknix-linux-package.mk ]; then
+              CFG=$(grep -ioP "CONFIG_JOYSTICK_\w*$(echo $base | grep -oiP 'SINGLEADC' || echo ROCKNIX)\w*" ../rocknix-linux-package.mk | sort -u | head -n1)
+            fi
+            if [ -z "$CFG" ]; then
+              if echo "$base" | grep -qi singleadc; then
+                CFG="CONFIG_JOYSTICK_SINGLEADCJOY"
+              else
+                CFG="CONFIG_JOYSTICK_ROCKNIX"
+              fi
+              echo "!!! Não achei o nome exato da CONFIG pra $base no package.mk, usando: $CFG"
+            else
+              echo "--> Nome real encontrado no package.mk pra $base: $CFG"
+            fi
+            SYM=${CFG#CONFIG_}
+
+            if ! grep -q "config ${SYM}$" drivers/input/joystick/Kconfig; then
+              echo "--> Registrando ${SYM} no Kconfig..."
+              BLOCK=$'\nconfig '"${SYM}"$'\n\ttristate "ROCKNIX joypad driver ('"${base}"$')"\n\tdepends on INPUT\n\thelp\n\t  Driver de botoes/analogico customizado da ROCKNIX ('"${base}"$').\n'
+              if grep -q '^endif' drivers/input/joystick/Kconfig; then
+                awk -v block="$BLOCK" '/^endif/ && !done {print block; done=1} {print}' \
+                  drivers/input/joystick/Kconfig > /tmp/Kconfig.new
+                mv /tmp/Kconfig.new drivers/input/joystick/Kconfig
+              else
+                printf '%s\n' "$BLOCK" >> drivers/input/joystick/Kconfig
+              fi
+            fi
+
+            if ! grep -q "${obj}" drivers/input/joystick/Makefile; then
+              echo "obj-\$(${CFG}) += ${obj}" >> drivers/input/joystick/Makefile
+            fi
+
+            ./scripts/config --enable "$CFG"
+          done
+          make olddefconfig
+        else
+          echo "!!! rocknix-joypad-src não encontrado — botões/analógico não vão funcionar"
+          echo "!!! mesmo que o .dts tenha o nó certo, porque falta o driver."
+        fi
+
         # "make dtbs" compila TODOS os device trees da plataforma Rockchip de
         # uma vez (não é filtrado por defconfig) — então X55 e X35S saem
         # juntos aqui, sem precisar de nenhum passo extra.
@@ -234,6 +296,29 @@ jobs:
 
         echo "--> Verificando se os dtbs da X55 e X35S foram gerados:"
         find arch/arm64/boot/dts/rockchip -iname '*powkiddy-x55*' -o -iname '*powkiddy-x35s*'
+
+        echo "--> Forçando dr_mode=peripheral no NOSSO .dtb compilado também (mesmo"
+        echo "--> fix aplicado no .dtb oficial — erro 'ep0out' apareceu nos dois)."
+        DTB_PATH=arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dtb
+        if [ -f "$DTB_PATH" ]; then
+          dtc -I dtb -O dts -o /tmp/nosso-x35s.dts "$DTB_PATH" 2>/dev/null
+          awk '
+            /usb@fcc00000[ \t]*\{/ { inblk=1; depth=1; found=0; print; next }
+            inblk {
+              n=gsub(/\{/,"{"); depth+=n
+              n=gsub(/\}/,"}"); depth-=n
+              if ($0 ~ /dr_mode = /) { sub(/dr_mode = "[a-zA-Z]*";/, "dr_mode = \"peripheral\";"); found=1 }
+              if (depth<=0 && !found) { print "\t\tdr_mode = \"peripheral\";" }
+              print
+              if (depth<=0) inblk=0
+              next
+            }
+            { print }
+          ' /tmp/nosso-x35s.dts > /tmp/nosso-x35s.dts.new
+          dtc -I dts -O dtb -o "$DTB_PATH" /tmp/nosso-x35s.dts.new 2>&1 | tail -20
+          echo "--> Confirmando:"
+          dtc -I dtb -O dts "$DTB_PATH" 2>/dev/null | grep -A5 'usb@fcc00000'
+        fi
 
         echo "--> DIAGNÓSTICO: tudo relacionado a 'panel' no rk3566-powkiddy-x35s.dts"
         grep -n -i -B2 -A10 'panel' arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dts || echo "Nada com 'panel' encontrado."
@@ -338,6 +423,29 @@ jobs:
             dtc -I dts -O dtb -o rocknix-official-x35s.dtb rocknix-official-x35s.dts 2>&1 | tail -20
             echo "--> Confirmando que a mudança entrou:"
             dtc -I dtb -O dts rocknix-official-x35s.dtb 2>/dev/null | grep -A2 'hdmi@fe0a0000'
+
+            echo "--> Forçando dr_mode=peripheral no controlador USB (fcc00000.usb) — o erro"
+            echo "--> 'failed to enable ep0out' apareceu em TODOS os testes até agora, com"
+            echo "--> qualquer .dtb, sugerindo que o modo OTG dinâmico não está detectando"
+            echo "--> VBUS/ID de forma confiável. Forçar modo 'peripheral' puro é o fix padrão."
+            dtc -I dtb -O dts -o rocknix-official-x35s.dts rocknix-official-x35s.dtb 2>/dev/null
+            awk '
+              /usb@fcc00000[ \t]*\{/ { inblk=1; depth=1; found=0; print; next }
+              inblk {
+                n=gsub(/\{/,"{"); depth+=n
+                n=gsub(/\}/,"}"); depth-=n
+                if ($0 ~ /dr_mode = /) { sub(/dr_mode = "[a-zA-Z]*";/, "dr_mode = \"peripheral\";"); found=1 }
+                if (depth<=0 && !found) { print "\t\tdr_mode = \"peripheral\";" }
+                print
+                if (depth<=0) inblk=0
+                next
+              }
+              { print }
+            ' rocknix-official-x35s.dts > rocknix-official-x35s.dts.new
+            mv rocknix-official-x35s.dts.new rocknix-official-x35s.dts
+            dtc -I dts -O dtb -o rocknix-official-x35s.dtb rocknix-official-x35s.dts 2>&1 | tail -20
+            echo "--> Confirmando:"
+            dtc -I dtb -O dts rocknix-official-x35s.dtb 2>/dev/null | grep -A5 'usb@fcc00000'
           else
             echo "!!! .dtb da X35S não encontrado dentro do release (procure manualmente)."
             sudo find /mnt/rocknix-boot -iname '*.dtb' | sort
@@ -355,24 +463,131 @@ jobs:
         sudo chroot rootfs /debootstrap/debootstrap --second-stage
 
         echo "--> Pacotes básicos + acesso via console serial..."
-        sudo cp common/packages/base.list rootfs/tmp/walkmam-base-packages.list
         sudo chroot rootfs bash -c '
-          set -e
           export DEBIAN_FRONTEND=noninteractive
           apt-get update
-          xargs -r apt-get install -y --no-install-recommends < /tmp/walkmam-base-packages.list
-          rm /tmp/walkmam-base-packages.list
+          apt-get install -y --no-install-recommends \
+            systemd-sysv udev ifupdown network-manager \
+            openssh-server sudo nano
           echo "root:root" | chpasswd
           echo "rk3566-x55" > /etc/hostname
         '
 
+        echo "--> Habilitando login automático no console serial (ttyS2)..."
+        sudo mkdir -p rootfs/etc/systemd/system/serial-getty@ttyS2.service.d
+        sudo bash -c 'cat << "EOF" > rootfs/etc/systemd/system/serial-getty@ttyS2.service.d/autologin.conf
+        [Service]
+        ExecStart=
+        ExecStart=-/sbin/agetty --autologin root --keep-baud 1500000,115200,38400,9600 %I $TERM
+        EOF'
+
+        echo "--> Habilitando login automático na tela (tty1)..."
+        sudo mkdir -p rootfs/etc/systemd/system/getty@tty1.service.d
+        sudo bash -c 'cat << "EOF" > rootfs/etc/systemd/system/getty@tty1.service.d/autologin.conf
+        [Service]
+        ExecStart=
+        ExecStart=-/sbin/agetty --autologin root --noclear %I $TERM
+        EOF'
+
+        echo "--> Criando serviço que salva diagnóstico (dmesg, USB, input) no cartão SD"
+        echo "--> a cada boot — assim dá pra ler no PC sem precisar de serial/rede/solda."
+        sudo bash -c 'cat << "EOF" > rootfs/usr/local/bin/dump-diagnostico.sh
+        #!/bin/sh
+        # Espera alguns segundos pro boot terminar e USB ter tempo de negociar
+        sleep 15
+        OUT=/boot/diagnostico.txt
+        {
+          echo "===== $(date) ====="
+          echo
+          echo "----- dmesg (log do kernel) -----"
+          dmesg
+          echo
+          echo "----- /proc/bus/input/devices (botoes/analogico) -----"
+          cat /proc/bus/input/devices
+          echo
+          echo "----- lsmod (modulos carregados) -----"
+          lsmod
+          echo
+          echo "----- /sys/class/udc (controlador USB em modo gadget) -----"
+          ls -la /sys/class/udc/ 2>&1
+          echo
+          echo "----- ip addr (interfaces de rede) -----"
+          ip addr
+          echo
+          echo "----- journalctl -u kodi (ultimas 100 linhas) -----"
+          journalctl -u kodi -n 100 --no-pager
+          echo
+          echo "----- /root/.kodi/temp/kodi.log (log interno do Kodi, GBM/DRM) -----"
+          cat /root/.kodi/temp/kodi.log 2>&1 || echo "(arquivo não existe ainda)"
+        } > "$OUT" 2>&1
+        EOF'
+        sudo chmod +x rootfs/usr/local/bin/dump-diagnostico.sh
+
+        sudo bash -c 'cat << "EOF" > rootfs/etc/systemd/system/dump-diagnostico.service
+        [Unit]
+        Description=Salva diagnostico de boot no cartao SD (boot partition)
+        After=multi-user.target
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/local/bin/dump-diagnostico.sh
+
+        [Install]
+        WantedBy=multi-user.target
+        EOF'
+        sudo chroot rootfs systemctl enable dump-diagnostico.service
+
+        echo "--> Criando serviço que ativa o USB gadget ethernet no boot (g_ether),"
+        echo "--> já que o driver estava habilitado no kernel mas nunca era carregado."
+        sudo bash -c 'cat << "EOF" > rootfs/usr/local/bin/setup-usb-gadget.sh
+        #!/bin/sh
+        # g_ether cria a interface usb0 sozinho ao carregar, sem precisar
+        # montar configfs manualmente. host_addr/dev_addr fixos evitam MAC
+        # aleatório (facilita configurar o lado do PC, se precisar).
+        modprobe g_ether dev_addr=02:00:00:00:00:01 host_addr=02:00:00:00:00:02
+        sleep 2
+        ip link set dev usb0 up 2>/dev/null || true
+        ip addr add 10.55.0.1/24 dev usb0 2>/dev/null || true
+        EOF'
+        sudo chmod +x rootfs/usr/local/bin/setup-usb-gadget.sh
+
+        sudo bash -c 'cat << "EOF" > rootfs/etc/systemd/system/usb-gadget.service
+        [Unit]
+        Description=USB Ethernet Gadget (g_ether) para SSH via cabo USB-C
+        After=sys-kernel-config.mount
+        Before=ssh.service
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/local/bin/setup-usb-gadget.sh
+        RemainAfterExit=yes
+
+        [Install]
+        WantedBy=multi-user.target
+        EOF'
+        sudo chroot rootfs systemctl enable usb-gadget.service
+
+        echo "--> Impedindo o NetworkManager de gerenciar a usb0 (senão ele pode"
+        echo "--> sobrescrever o IP fixo que o script de gadget configurou)."
+        sudo mkdir -p rootfs/etc/NetworkManager/conf.d
+        sudo bash -c 'cat << "EOF" > rootfs/etc/NetworkManager/conf.d/99-unmanaged-usb0.conf
+        [keyfile]
+        unmanaged-devices=interface-name:usb0
+        EOF'
+
+        echo "--> Garantindo que a partição de boot (FAT) esteja montada em /boot no sistema,"
+        echo "--> senão o script acima não tem onde escrever:"
+        sudo bash -c 'echo "LABEL=BOOT /boot vfat defaults 0 0" >> rootfs/etc/fstab'
+        sudo mkdir -p rootfs/boot
+
         echo "--> Instalando Kodi (GBM, sem X11) e dependências gráficas/áudio..."
-        sudo cp variants/kodi/packages/kodi.list rootfs/tmp/walkmam-kodi-packages.list
         sudo chroot rootfs bash -c '
-          set -e
           export DEBIAN_FRONTEND=noninteractive
-          xargs -r apt-get install -y --no-install-recommends < /tmp/walkmam-kodi-packages.list
-          rm /tmp/walkmam-kodi-packages.list
+          apt-get install -y --no-install-recommends \
+            kodi kodi-bin kodi-peripheral-joystick \
+            libgl1-mesa-dri libegl-mesa0 libgbm1 libgles2 libinput10 \
+            evtest \
+            alsa-utils dbus ca-certificates
           apt-get clean
           rm -rf /var/lib/apt/lists/*
         '
@@ -381,12 +596,29 @@ jobs:
         sudo chroot rootfs kodi.bin --help 2>&1 | grep -i 'windowing' || \
           echo "(Não foi possível confirmar via --help, mas o pacote bookworm documenta suporte a gbm/wayland/x11 no mesmo binário.)"
 
-        echo "--> Aplicando o overlay Kodi e habilitando seus serviços..."
-        sudo cp -a variants/kodi/overlay/. rootfs/
-        sudo chmod +x rootfs/usr/local/bin/dump-diagnostico.sh rootfs/usr/local/bin/setup-usb-gadget.sh
-        sudo mkdir -p rootfs/boot
-        sudo bash -c 'grep -Fxq "LABEL=BOOT /boot vfat defaults 0 0" rootfs/etc/fstab || echo "LABEL=BOOT /boot vfat defaults 0 0" >> rootfs/etc/fstab'
-        sudo chroot rootfs systemctl enable dump-diagnostico.service usb-gadget.service kodi.service
+        echo "--> Criando serviço systemd do Kodi (tela cheia via DRM/GBM no tty1)..."
+        sudo bash -c 'cat << "EOF" > rootfs/etc/systemd/system/kodi.service
+        [Unit]
+        Description=Kodi Media Center (GBM)
+        After=systemd-user-sessions.service systemd-udev-settle.service sound.target
+        Conflicts=getty@tty1.service
+        After=getty@tty1.service
+
+        [Service]
+        User=root
+        Environment=HOME=/root
+        Environment=KODI_AE_SINK=ALSA
+        TTYPath=/dev/tty1
+        StandardInput=tty
+        StandardOutput=journal
+        ExecStart=/usr/bin/kodi --standalone --windowing=gbm
+        Restart=always
+        RestartSec=3
+
+        [Install]
+        WantedBy=multi-user.target
+        EOF'
+        sudo chroot rootfs systemctl enable kodi.service
 
         echo "--> Instalando módulos do kernel no RootFS..."
         cd kernel
@@ -395,17 +627,101 @@ jobs:
 
     - name: Create SD Card Image (.img)
       run: |
+        sudo bash << 'EOF'
+        set -e
+
+        IMAGE_NAME="rk3566-x55-mainline-sdcard.img"
+        IMAGE_SIZE_MB=4096
+
+        echo "--> Criando arquivo de imagem vazio (${IMAGE_SIZE_MB}MB)..."
+        dd if=/dev/zero of=${IMAGE_NAME} bs=1M count=${IMAGE_SIZE_MB} status=progress
+
+        echo "--> Criando tabela de partições MBR..."
+        parted -s ${IMAGE_NAME} mklabel msdos
+        parted -s ${IMAGE_NAME} mkpart primary fat32 16MiB 144MiB
+        parted -s ${IMAGE_NAME} mkpart primary ext4 144MiB 100%
+
+        echo "--> Mapeando partições para loop devices..."
+        LOOP_DEV=$(losetup -fP --show ${IMAGE_NAME})
+        BOOT_DEV="${LOOP_DEV}p1"
+        ROOT_DEV="${LOOP_DEV}p2"
+
+        echo "--> Formatando partições..."
+        mkfs.vfat -F 32 -n "BOOT" ${BOOT_DEV}
+        mkfs.ext4 -F -L "ROOTFS" ${ROOT_DEV}
+
+        echo "--> Gravando U-Boot mainline nos setores corretos..."
+        # idbloader.img: SPL/TPL -> setor 64  (offset 32KB)
+        # u-boot.itb:    U-Boot proper -> setor 16384 (offset 8MB)
+        dd if=uboot/idbloader.img of=${LOOP_DEV} seek=64 conv=notrunc,fsync
+        dd if=uboot/u-boot.itb of=${LOOP_DEV} seek=16384 conv=notrunc,fsync
+
+        echo "--> Montando partições..."
+        mkdir -p /mnt/boot /mnt/rootfs
+        mount ${BOOT_DEV} /mnt/boot
+        mount ${ROOT_DEV} /mnt/rootfs
+
+        echo "--> Copiando kernel e device trees (X55 + X35S/X35H)..."
+        cp kernel/arch/arm64/boot/Image /mnt/boot/
+        mkdir -p /mnt/boot/dtbs
+        cp kernel/arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x55.dtb /mnt/boot/dtbs/
+        cp kernel/arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dtb /mnt/boot/dtbs/rk3566-powkiddy-x35s-nosso.dtb 2>/dev/null || true
+
+        X35S_DEFAULT="dtbs/rk3566-powkiddy-x35s-nosso.dtb"
         if [ -f rocknix-official-x35s.dtb ]; then
-          WALKMAN_DTB_SOURCE=rocknix-official-x35s.dtb \
-          WALKMAN_IMAGE_NAME=rk3566-x55-mainline-sdcard.img \
-          build/build.sh powkiddy-x35s kodi
-        elif [ -f kernel/arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dtb ]; then
-          WALKMAN_IMAGE_NAME=rk3566-x55-mainline-sdcard.img \
-          build/build.sh powkiddy-x35s kodi
+          echo "--> Usando o .dtb OFICIAL da ROCKNIX como padrão pra X35S/X35H (mais completo:"
+          echo "--> tem botões/analógico e USB funcionando, confirmados no release deles)."
+          cp rocknix-official-x35s.dtb /mnt/boot/dtbs/rk3566-powkiddy-x35s-rocknix.dtb
+          X35S_DEFAULT="dtbs/rk3566-powkiddy-x35s-rocknix.dtb"
         else
-          echo "::error::Nenhum DTB X35S oficial nem compilado foi encontrado; a imagem não pode ser empacotada." >&2
-          exit 1
+          echo "!!! .dtb oficial da ROCKNIX não foi obtido — usando o nosso (incompleto: sem"
+          echo "!!! botões/analógico, USB com erro de ep0out)."
         fi
+
+        echo "--> Criando extlinux.conf (padrão: X35H/X35S — troque a linha FDT p/ X55)..."
+        mkdir -p /mnt/boot/extlinux
+        cat << BOOTCFG > /mnt/boot/extlinux/extlinux.conf
+        LABEL Mainline (Powkiddy X35H / X35S)
+            KERNEL /Image
+            FDT /${X35S_DEFAULT}
+            APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw
+        BOOTCFG
+
+        # Referência: variante usando o nosso próprio .dtb compilado, caso o
+        # oficial da ROCKNIX dê algum problema de incompatibilidade.
+        cat << "BOOTCFG3" > /mnt/boot/extlinux/extlinux.conf.x35s-nosso
+        LABEL Mainline (X35S - nosso .dtb)
+            KERNEL /Image
+            FDT /dtbs/rk3566-powkiddy-x35s-nosso.dtb
+            APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw
+        BOOTCFG3
+
+        # Referência p/ X55: mesma imagem, só troca o FDT. Salvamos como
+        # arquivo à parte (não ativo) — é só copiar o conteúdo por cima do
+        # extlinux.conf se o aparelho for a X55.
+        cat << "BOOTCFG2" > /mnt/boot/extlinux/extlinux.conf.x55
+        LABEL Mainline (Powkiddy X55)
+            KERNEL /Image
+            FDT /dtbs/rk3566-powkiddy-x55.dtb
+            APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw
+        BOOTCFG2
+
+        echo "--> Copiando rootfs..."
+        cp -a rootfs/* /mnt/rootfs/
+
+        echo "--> Desmontando e limpando..."
+        umount /mnt/boot
+        umount /mnt/rootfs
+        losetup -d ${LOOP_DEV}
+
+        echo "--> Compactando imagem final..."
+        gzip -f ${IMAGE_NAME}
+        EOF
+
+    - name: Prepare Output Directory
+      run: |
+        mkdir -p output
+        mv rk3566-x55-mainline-sdcard.img.gz output/
 
     - name: Upload SD Card Image Artifact
       uses: actions/upload-artifact@v4
