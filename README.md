@@ -1,40 +1,59 @@
 # Walkmam RK3566
 
-Sistema operacional Linux para media players RK3566, com foco inicial nos handhelds Powkiddy X55, X35S e X35H.
+Sistema Linux para media players RK3566, com foco inicial nos handhelds Powkiddy X55, X35S e X35H.
 
-> **Status:** em desenvolvimento. O build funcional atual está em `.github/workflows/build.yml` e usa Linux mainline v6.12, U-Boot, rkbin, ROCKNIX, Debian ARM64 e Kodi/GBM. A matriz e os arquivos de dispositivo abaixo organizam a evolução sem substituir o fluxo funcional antes dos testes em hardware.
-
-## Dispositivos
-
-| Identificador | Modelo | Device tree | Estado |
-|---|---|---|---|
-| `powkiddy-x55` | Powkiddy X55 | `rk3566-powkiddy-x55.dtb` | Base mainline funcional |
-| `powkiddy-x35s` | Powkiddy X35S | Referência ROCKNIX / DTS próprio | Em investigação |
-| `powkiddy-x35h` | Powkiddy X35H | Referência X35S até existir DTS específico validado | Em investigação |
-
-Não são definidos GPIOs, resolução ou pinagem sem confirmação no hardware. Esses dados devem ser registrados em `devices/<device>/device.conf` após validação.
-
-## Build atual
-
-O workflow legado preserva a base já parcialmente funcional:
-
-1. baixa U-Boot mainline, Linux v6.12 e `rkbin`;
-2. consulta configurações, patches e DTBs da ROCKNIX;
-3. compila kernel, módulos e device trees;
-4. cria Debian ARM64 com Kodi GBM, SSH USB gadget e diagnóstico;
-5. gera imagem SD compactada como artefato do Actions.
-
-Acesse **Actions → Build Mainline RK3566 (Powkiddy X55) OS → Run workflow** para disparar manualmente.
+> **Status:** em desenvolvimento. O workflow em `.github/workflows/build.yml` mantém o build existente com U-Boot, Linux v6.12, ROCKNIX, Debian ARM64 e Kodi/GBM. X55 tem device tree mainline; X35S continua em investigação e X35H não possui configuração de build independente validada.
 
 ## Estrutura
 
 ```text
-common/                recursos compartilhados
-  kernel/              política e fragmentos comuns
-  packages/            pacotes comuns
-  overlay/             arquivos do rootfs
-devices/               um diretório por placa
-variants/              Kodi e sistema próprio
-build/                 ferramentas e documentação
-docs/                  diagnóstico e porting
-.github/workflows/     CI/CD
+common/
+  kernel/                 fragmentos e política compartilhada do kernel
+  packages/               pacotes comuns do rootfs
+  overlay/                arquivos compartilhados instalados no rootfs
+devices/<device>/
+  dts/                    fontes e referências de device tree
+  uboot/                  configuração e referências de U-Boot
+  kernel.fragment         fragmento específico, quando validado
+  device.conf             metadados de build da placa
+variants/<variant>/
+  packages/               pacotes da variante
+  overlay/                serviços e arquivos específicos da variante
+  variant.conf            metadados da variante
+build/
+  build.sh                entrada para empacotar <device> <variant>
+  create-image.sh         criação da imagem SD
+tools/                    utilitários auxiliares
+docs/                     build, arquitetura e porting
+.github/                  workflow, templates e CODEOWNERS
+```
+
+## Dispositivos e variantes
+
+| Identificador | Modelo | Estado |
+|---|---|---|
+| `powkiddy-x55` | Powkiddy X55 | Device tree mainline conhecido |
+| `powkiddy-x35s` | Powkiddy X35S | DTS/DTB de referência ROCKNIX; em investigação |
+| `powkiddy-x35h` | Powkiddy X35H | Sem DTS/DTB independente validado |
+
+A variante atualmente configurada é `kodi` (Debian Bookworm + Kodi/GBM). Valores de pinagem, GPIO e display não são inferidos; consulte `docs/porting.md` antes de adicionar hardware.
+
+`variants/own/` permanece como scaffold planejado: não contém pacotes nem overlay instalável e o empacotador recusa essa variante até que seja implementada.
+
+## Empacotar uma imagem
+
+Depois de preparar os artefatos de U-Boot, kernel e rootfs, execute:
+
+```sh
+build/build.sh powkiddy-x55 kodi
+```
+
+Por padrão, o script procura `uboot/`, `kernel/` e `rootfs/` na raiz do repositório e grava a imagem compactada em `output/`. Os caminhos podem ser definidos por `WALKMAN_UBOOT_DIR`, `WALKMAN_KERNEL_DIR`, `WALKMAN_ROOTFS_DIR` e `WALKMAN_OUTPUT_DIR`; caminhos relativos também são resolvidos a partir da raiz do repositório. `WALKMAN_DTB_SOURCE` pode apontar para um DTB de referência já obtido; sem isso, usa o DTB compilado no diretório do kernel. O script não baixa fontes nem monta o rootfs: no momento, o workflow do GitHub Actions é o fluxo completo de build.
+
+Para executar o build completo, use **Actions → Build Mainline RK3566 (Powkiddy X55) OS → Run workflow**. O workflow produz a imagem de referência com DTB X35S (oficial da ROCKNIX, ou o compilado como fallback), mantendo o nome histórico do artifact `rk3566-x55-mainline-sdcard-image` por compatibilidade. A imagem não representa validação em hardware nem suporte específico à X35H.
+
+## Documentação
+
+- [Fluxo de build](docs/build.md)
+- [Porting de dispositivos](docs/porting.md)
+- [Arquitetura e estado da migração](docs/architecture.md)

@@ -1,0 +1,19 @@
+[Unit]
+Description=Kodi Media Center (GBM)
+After=systemd-user-sessions.service systemd-udev-settle.service sound.target
+Conflicts=getty@tty1.service
+After=getty@tty1.service
+
+[Service]
+User=root
+Environment=HOME=/root
+Environment=KODI_AE_SINK=ALSA
+TTYPath=/dev/tty1
+StandardInput=tty
+StandardOutput=journal
+ExecStart=/usr/bin/kodi --standalone --windowing=gbm
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

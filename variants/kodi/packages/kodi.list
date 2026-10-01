@@ -1,0 +1,12 @@
+kodi
+kodi-bin
+kodi-peripheral-joystick
+libgl1-mesa-dri
+libegl-mesa0
+libgbm1
+libgles2
+libinput10
+evtest
+alsa-utils
+dbus
+ca-certificates

@@ -1,0 +1,10 @@
+[Unit]
+Description=Salva diagnostico de boot no cartao SD (boot partition)
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/dump-diagnostico.sh
+
+[Install]
+WantedBy=multi-user.target
