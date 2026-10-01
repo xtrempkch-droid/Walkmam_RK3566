@@ -19,7 +19,7 @@ jobs:
         sudo apt-get install -y \
           build-essential gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
           bison flex libssl-dev bc libncurses-dev kmod u-boot-tools \
-          device-tree-compiler python3 python3-pyelftools python3-setuptools \
+          device-tree-compiler python3 python3-dev python3-pyelftools python3-setuptools \
           swig libelf-dev libgnutls28-dev rsync git wget \
           parted kpartx e2fsprogs dosfstools qemu-user-static debootstrap
 
@@ -120,10 +120,12 @@ jobs:
           cp "$LINUX_PKGMK" rocknix-linux-package.mk
         fi
 
-        echo "--> Clonando ROCKNIX/rocknix-joypad (driver de botões/analógico — repositório"
-        echo "--> SEPARADO do distribution, por isso nunca apareceu nas buscas anteriores)."
-        git clone --depth 1 https://github.com/ROCKNIX/rocknix-joypad.git rocknix-joypad-src || \
-          echo "!!! Falha ao clonar rocknix-joypad — botões não poderão ser integrados."
+        echo "--> Baixando a revisão do driver rocknix-joypad usada para adaptar o X55."
+        git init rocknix-joypad-src
+        git -C rocknix-joypad-src fetch --depth 1 \
+          https://github.com/ROCKNIX/rocknix-joypad.git \
+          d02ed13aae08113f6f9e0e9d699cb29bb3450fa2
+        git -C rocknix-joypad-src checkout --detach FETCH_HEAD
         ls -la rocknix-joypad-src/ 2>/dev/null
 
     - name: Build Mainline Kernel
@@ -158,11 +160,27 @@ jobs:
           fi
         done
 
+        echo "--> Normalizando a configuração do joypad do X55 para um único nó ROCKNIX."
+        python3 ../build/configure-x55-dts.py arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x55.dts
+        if ! grep -q $'^\tjoypad: rocknix-joypad {' arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x55.dts; then
+          echo "O nó rocknix-joypad precisa ser filho direto da raiz do device tree." >&2
+          exit 1
+        fi
+        if grep -q $'^\t\tjoypad: rocknix-joypad {' arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x55.dts; then
+          echo "O nó rocknix-joypad não pode ficar aninhado em outro dispositivo." >&2
+          exit 1
+        fi
+
         echo "--> A X35S/X35H não tem porta HDMI física — desabilitando o nó HDMI do SoC no"
         echo "--> .dts antes de compilar (se ficasse habilitado, o Kodi em modo GBM poderia"
         echo "--> escolher esse conector 'fantasma' em vez do painel, deixando a tela preta)."
         if [ -f arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dts ]; then
           printf '\n&hdmi {\n\tstatus = "disabled";\n};\n' >> arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dts
+        fi
+
+        echo "--> Desabilitando HDMI no X55 para testar o workaround de tela preta."
+        if [ -f arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x55.dts ]; then
+          printf '\n&hdmi {\n\tstatus = "disabled";\n};\n' >> arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x55.dts
         fi
 
         echo "--> Checando modo da porta USB (precisa ser 'otg'/'peripheral', não fixo em 'host',"
@@ -182,7 +200,7 @@ jobs:
         # template, preenchido pelo build system deles (LibreELEC-based) antes
         # de compilar. Aqui não temos esse pipeline, e como usamos rootfs em
         # partição separada (não initramfs embutido), zeramos esse campo.
-        ./scripts/config --set-str CONFIG_INITRAMFS_SOURCE ""
+        ./scripts/config --set-str INITRAMFS_SOURCE ""
 
         make olddefconfig
 
@@ -226,7 +244,7 @@ jobs:
           fi
 
           echo "--> Habilitando ${GENERIC_DSI_CONFIG} no .config..."
-          ./scripts/config --enable "$GENERIC_DSI_CONFIG"
+          ./scripts/config --enable "$CFG_SYMBOL"
           make olddefconfig
         else
           echo "!!! panel-generic-dsi.c NÃO foi encontrado no repositório da ROCKNIX."
@@ -234,228 +252,32 @@ jobs:
           echo "!!! porque o compatible \"rocknix,generic-dsi\" não tem driver nenhum."
         fi
 
-        # Header de compatibilidade (criado aqui, no nível base do script, pra o
-        # terminador do heredoc ficar na coluna certa dentro do YAML).
-        cat << 'EOF_COMPAT' > /tmp/rocknix-polldev-compat.h
-        /* SPDX-License-Identifier: GPL-2.0 */
-        /* Shim: recria a API antiga input_polled_dev sobre delayed_work. */
-        #ifndef _ROCKNIX_POLLDEV_COMPAT_H
-        #define _ROCKNIX_POLLDEV_COMPAT_H
-
-        #include <linux/input.h>
-        #include <linux/workqueue.h>
-        #include <linux/slab.h>
-        #include <linux/device.h>
-        #include <linux/jiffies.h>
-
-        struct input_polled_dev {
-        	void *private;
-        	void (*open)(struct input_polled_dev *dev);
-        	void (*close)(struct input_polled_dev *dev);
-        	void (*poll)(struct input_polled_dev *dev);
-        	unsigned int poll_interval; /* msec */
-        	unsigned int poll_interval_max;
-        	unsigned int poll_interval_min;
-        	struct input_dev *input;
-        	struct delayed_work work;
-        	bool registered;
-        };
-
-        static inline void input_polldev_queue_work(struct input_polled_dev *dev)
-        {
-        	unsigned long delay = msecs_to_jiffies(dev->poll_interval);
-
-        	if (delay >= HZ)
-        		delay = round_jiffies_relative(delay);
-        	queue_delayed_work(system_freezable_wq, &dev->work, delay);
-        }
-
-        static inline void input_polled_work_fn(struct work_struct *work)
-        {
-        	struct input_polled_dev *dev =
-        		container_of(work, struct input_polled_dev, work.work);
-
-        	dev->poll(dev);
-        	input_polldev_queue_work(dev);
-        }
-
-        static inline int input_open_polled_device(struct input_dev *input)
-        {
-        	struct input_polled_dev *dev = input_get_drvdata(input);
-
-        	if (dev->open)
-        		dev->open(dev);
-        	if (dev->poll_interval > 0) {
-        		dev->poll(dev);
-        		input_polldev_queue_work(dev);
-        	}
-        	return 0;
-        }
-
-        static inline void input_close_polled_device(struct input_dev *input)
-        {
-        	struct input_polled_dev *dev = input_get_drvdata(input);
-
-        	cancel_delayed_work_sync(&dev->work);
-        	if (dev->close)
-        		dev->close(dev);
-        }
-
-        static inline struct input_polled_dev *input_allocate_polled_device(void)
-        {
-        	struct input_polled_dev *dev = kzalloc(sizeof(*dev), GFP_KERNEL);
-
-        	if (!dev)
-        		return NULL;
-        	dev->input = input_allocate_device();
-        	if (!dev->input) {
-        		kfree(dev);
-        		return NULL;
-        	}
-        	return dev;
-        }
-
-        static inline void input_free_polled_device(struct input_polled_dev *dev)
-        {
-        	if (dev) {
-        		input_free_device(dev->input);
-        		kfree(dev);
-        	}
-        }
-
-        static inline int input_register_polled_device(struct input_polled_dev *dev)
-        {
-        	struct input_dev *input = dev->input;
-        	int error;
-
-        	input_set_drvdata(input, dev);
-        	INIT_DELAYED_WORK(&dev->work, input_polled_work_fn);
-        	if (!dev->poll_interval)
-        		dev->poll_interval = 500;
-        	if (!dev->poll_interval_max)
-        		dev->poll_interval_max = dev->poll_interval;
-        	input->open = input_open_polled_device;
-        	input->close = input_close_polled_device;
-        	error = input_register_device(input);
-        	if (!error)
-        		dev->registered = true;
-        	return error;
-        }
-
-        static inline void input_unregister_polled_device(struct input_polled_dev *dev)
-        {
-        	cancel_delayed_work_sync(&dev->work);
-        	input_unregister_device(dev->input);
-        	dev->input = NULL;
-        	dev->registered = false;
-        }
-
-        static inline void rocknix_polldev_devres_release(void *data)
-        {
-        	struct input_polled_dev *dev = data;
-
-        	if (dev->registered)
-        		input_unregister_polled_device(dev);
-        	input_free_polled_device(dev);
-        }
-
-        static inline struct input_polled_dev *
-        devm_input_allocate_polled_device(struct device *parent)
-        {
-        	struct input_polled_dev *dev = input_allocate_polled_device();
-
-        	if (!dev)
-        		return NULL;
-        	if (devm_add_action_or_reset(parent, rocknix_polldev_devres_release, dev))
-        		return NULL;
-        	return dev;
-        }
-
-        #endif /* _ROCKNIX_POLLDEV_COMPAT_H */
-        EOF_COMPAT
-
         echo "--> Integrando o driver de botões/analógico (rocknix-joypad)..."
-        if [ -d ../rocknix-joypad-src ]; then
-          mkdir -p drivers/input/joystick
-
-          # A X35S usa esquema de ADC único (rocknix-singleadc-joypad.c).
-          # O rocknix-joypad.c "genérico" (multi-botão via MCU) é pra OUTROS
-          # dispositivos e, na nossa versão clonada, ainda usa a API antiga
-          # <linux/input-polldev.h> (removida do kernel há tempos) — por isso
-          # excluímos ele da compilação, evitando o erro sem perder nada que
-          # a gente realmente precisa.
-          cp ../rocknix-joypad-src/rocknix-singleadc-joypad.c drivers/input/joystick/ 2>/dev/null
-          cp ../rocknix-joypad-src/*.h drivers/input/joystick/ 2>/dev/null
-
-          echo "--> input-polldev.h foi removido do kernel mainline. Criando um header de"
-          echo "--> compatibilidade (mesma API, implementada com delayed_work) e apontando"
-          echo "--> o driver singleadc para ele."
-          cp /tmp/rocknix-polldev-compat.h drivers/input/joystick/rocknix-polldev-compat.h
-
-          sed -i 's|#include <linux/input-polldev.h>|#include "rocknix-polldev-compat.h"|' \
-            drivers/input/joystick/rocknix-singleadc-joypad.c \
-            drivers/input/joystick/rocknix-joypad.h 2>/dev/null
-          echo "--> Includes de polldev agora:"
-          grep -n 'polldev' drivers/input/joystick/rocknix-singleadc-joypad.c drivers/input/joystick/rocknix-joypad.h 2>/dev/null | head -5
-
-          for c in drivers/input/joystick/rocknix-singleadc-joypad.c; do
-            [ -f "$c" ] || continue
-            base=$(basename "$c" .c)
-            obj="${base}.o"
-
-            # Tenta achar o nome real da CONFIG_ no package.mk; senão usa um
-            # nome padrão baseado no arquivo (JOYSTICK_ROCKNIX / _SINGLEADC).
-            CFG=""
-            if [ -f ../rocknix-linux-package.mk ]; then
-              CFG=$(grep -ioP "CONFIG_JOYSTICK_\w*$(echo $base | grep -oiP 'SINGLEADC' || echo ROCKNIX)\w*" ../rocknix-linux-package.mk | sort -u | head -n1)
-            fi
-            if [ -z "$CFG" ]; then
-              if echo "$base" | grep -qi singleadc; then
-                CFG="CONFIG_JOYSTICK_SINGLEADCJOY"
-              else
-                CFG="CONFIG_JOYSTICK_ROCKNIX"
-              fi
-              echo "!!! Não achei o nome exato da CONFIG pra $base no package.mk, usando: $CFG"
-            else
-              echo "--> Nome real encontrado no package.mk pra $base: $CFG"
-            fi
-            SYM=${CFG#CONFIG_}
-
-            if ! grep -q "config ${SYM}$" drivers/input/joystick/Kconfig; then
-              echo "--> Registrando ${SYM} no Kconfig..."
-              BLOCK=$'\nconfig '"${SYM}"$'\n\ttristate "ROCKNIX joypad driver ('"${base}"$')"\n\tdepends on INPUT\n\thelp\n\t  Driver de botoes/analogico customizado da ROCKNIX ('"${base}"$').\n'
-              if grep -q '^endif' drivers/input/joystick/Kconfig; then
-                awk -v block="$BLOCK" '/^endif/ && !done {print block; done=1} {print}' \
-                  drivers/input/joystick/Kconfig > /tmp/Kconfig.new
-                mv /tmp/Kconfig.new drivers/input/joystick/Kconfig
-              else
-                printf '%s\n' "$BLOCK" >> drivers/input/joystick/Kconfig
-              fi
-            fi
-
-            if ! grep -q "${obj}" drivers/input/joystick/Makefile; then
-              echo "obj-\$(${CFG}) += ${obj}" >> drivers/input/joystick/Makefile
-            fi
-
-            ./scripts/config --enable "$CFG"
-          done
-          make olddefconfig
-        else
-          echo "!!! rocknix-joypad-src não encontrado — botões/analógico não vão funcionar"
-          echo "!!! mesmo que o .dts tenha o nó certo, porque falta o driver."
+        if [ ! -f ../rocknix-joypad-src/rocknix-joypad.c ]; then
+          echo "Driver ROCKNIX joypad não foi baixado." >&2
+          exit 1
         fi
+        cp ../build/rocknix-input-polldev-compat.h include/linux/input-polldev.h
+        mkdir -p drivers/input/joystick
+        cp ../rocknix-joypad-src/rocknix-joypad.c \
+           ../rocknix-joypad-src/rocknix-joypad.h \
+           drivers/input/joystick/
 
-        echo "--> Blindagem: removendo rocknix-joypad.c (usa input-polldev.h, API que não"
-        echo "--> existe mais no kernel 6.12) e qualquer linha dele no Makefile, venha de"
-        echo "--> onde vier (cópia antiga ou patch da ROCKNIX)."
-        rm -f drivers/input/joystick/rocknix-joypad.c
-        sed -i '/rocknix-joypad\.o/d' drivers/input/joystick/Makefile
-        echo "--> Linhas rocknix no Makefile de joystick agora:"
-        grep -n 'rocknix' drivers/input/joystick/Makefile || echo "(nenhuma)"
-        echo "--> Arquivos rocknix em drivers/input/joystick:"
-        ls -la drivers/input/joystick/ | grep -i rocknix || echo "(nenhum)"
-        echo "--> Algum arquivo ainda usa input-polldev.h?"
-        grep -rl 'input-polldev' drivers/input/joystick/ || echo "(nenhum — ok)"
+        if ! grep -q '^config JOYSTICK_ROCKNIX$' drivers/input/joystick/Kconfig; then
+          BLOCK=$'\nconfig JOYSTICK_ROCKNIX\n\ttristate "ROCKNIX joypad driver"\n\tdepends on INPUT && IIO\n\thelp\n\t  ROCKNIX gamepad driver for GPIO buttons and ADC axes.\n'
+          awk -v block="$BLOCK" '/^endif/ && !done {print block; done=1} {print}' \
+            drivers/input/joystick/Kconfig > /tmp/Kconfig.new
+          mv /tmp/Kconfig.new drivers/input/joystick/Kconfig
+        fi
+        if ! grep -q 'rocknix-joypad.o' drivers/input/joystick/Makefile; then
+          echo 'obj-$(CONFIG_JOYSTICK_ROCKNIX) += rocknix-joypad.o' >> \
+            drivers/input/joystick/Makefile
+        fi
+        ./scripts/config --enable INPUT_JOYSTICK
+        ./scripts/config --enable JOYSTICK_ROCKNIX
+        make olddefconfig
+        grep -qx 'CONFIG_INPUT_JOYSTICK=y' .config
+        grep -qx 'CONFIG_JOYSTICK_ROCKNIX=y' .config
 
         # "make dtbs" compila TODOS os device trees da plataforma Rockchip de
         # uma vez (não é filtrado por defconfig) — então X55 e X35S saem
@@ -513,20 +335,20 @@ jobs:
 
         echo "--> Garantindo (forçando) que os drivers de botão estão habilitados,"
         echo "--> já que sem rede no aparelho não dá pra checar e corrigir remotamente:"
-        ./scripts/config --enable CONFIG_JOYSTICK_ADC
-        ./scripts/config --enable CONFIG_KEYBOARD_GPIO
-        ./scripts/config --enable CONFIG_KEYBOARD_ADC
-        ./scripts/config --enable CONFIG_INPUT_JOYSTICK
-        ./scripts/config --enable CONFIG_INPUT_EVDEV
+        ./scripts/config --enable JOYSTICK_ADC
+        ./scripts/config --enable KEYBOARD_GPIO
+        ./scripts/config --enable KEYBOARD_ADC
+        ./scripts/config --enable INPUT_JOYSTICK
+        ./scripts/config --enable INPUT_EVDEV
 
         echo "--> Habilitando USB gadget ethernet (g_ether) pra SSH via cabo USB-C,"
         echo "--> já que a X35H não tem WiFi/Bluetooth:"
-        ./scripts/config --enable CONFIG_USB_GADGET
-        ./scripts/config --module CONFIG_USB_ETH
-        ./scripts/config --enable CONFIG_USB_LIBCOMPOSITE
-        ./scripts/config --enable CONFIG_USB_DWC3
-        ./scripts/config --enable CONFIG_USB_DWC3_DUAL_ROLE
-        ./scripts/config --enable CONFIG_USB_ROLE_SWITCH
+        ./scripts/config --enable USB_GADGET
+        ./scripts/config --module USB_ETH
+        ./scripts/config --enable USB_LIBCOMPOSITE
+        ./scripts/config --enable USB_DWC3
+        ./scripts/config --enable USB_DWC3_DUAL_ROLE
+        ./scripts/config --enable USB_ROLE_SWITCH
 
         make olddefconfig
         make -j"$(nproc)" Image modules
@@ -753,6 +575,7 @@ jobs:
           export DEBIAN_FRONTEND=noninteractive
           apt-get install -y --no-install-recommends \
             kodi kodi-bin kodi-peripheral-joystick \
+            weston \
             libgl1-mesa-dri libegl-mesa0 libgbm1 libgles2 libinput10 \
             evtest \
             alsa-utils dbus ca-certificates
@@ -760,32 +583,25 @@ jobs:
           rm -rf /var/lib/apt/lists/*
         '
 
-        echo "--> Confirmando suporte a --windowing=gbm no Kodi deste Debian:"
+        echo "--> Instalando o mapa de controles do gamepad ROCKNIX do X55 no Kodi..."
+        sudo install -D -m 0644 \
+          variants/kodi/overlay/usr/share/kodi/addons/peripheral.joystick/resources/buttonmaps/xml/linux/retrogame_joypad_17b_4a.xml \
+          rootfs/usr/share/kodi/addons/peripheral.joystick/resources/buttonmaps/xml/linux/retrogame_joypad_17b_4a.xml
+
+        echo "--> Configurando Weston para girar somente a sessão Kodi em DSI-1..."
+        sudo install -D -m 0644 \
+          variants/kodi/overlay/etc/xdg/weston/weston.ini \
+          rootfs/etc/xdg/weston/weston.ini
+        sudo install -D -m 0755 \
+          variants/kodi/overlay/usr/local/bin/start-kodi-wayland.sh \
+          rootfs/usr/local/bin/start-kodi-wayland.sh
+        sudo install -D -m 0644 \
+          variants/kodi/overlay/etc/systemd/system/kodi.service \
+          rootfs/etc/systemd/system/kodi.service
         sudo chroot rootfs kodi.bin --help 2>&1 | grep -i 'windowing' || \
-          echo "(Não foi possível confirmar via --help, mas o pacote bookworm documenta suporte a gbm/wayland/x11 no mesmo binário.)"
+          echo "(Não foi possível confirmar via --help; a sessão será iniciada em Wayland.)"
 
-        echo "--> Criando serviço systemd do Kodi (tela cheia via DRM/GBM no tty1)..."
-        sudo bash -c 'cat << "EOF" > rootfs/etc/systemd/system/kodi.service
-        [Unit]
-        Description=Kodi Media Center (GBM)
-        After=systemd-user-sessions.service systemd-udev-settle.service sound.target
-        Conflicts=getty@tty1.service
-        After=getty@tty1.service
-
-        [Service]
-        User=root
-        Environment=HOME=/root
-        Environment=KODI_AE_SINK=ALSA
-        TTYPath=/dev/tty1
-        StandardInput=tty
-        StandardOutput=journal
-        ExecStart=/usr/bin/kodi --standalone --windowing=gbm
-        Restart=always
-        RestartSec=3
-
-        [Install]
-        WantedBy=multi-user.target
-        EOF'
+        echo "--> Criando serviço Kodi em Weston/Wayland sobre DRM no tty1..."
         sudo chroot rootfs systemctl enable kodi.service
 
         echo "--> Instalando módulos do kernel no RootFS..."
