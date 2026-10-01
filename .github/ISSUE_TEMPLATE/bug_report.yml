@@ -1,0 +1,32 @@
+name: Relatar um problema
+description: Relate um problema reproduzível no build ou em um dispositivo.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: input
+    id: device
+    attributes:
+      label: Dispositivo e variante
+      description: Informe os identificadores em devices/ e variants/.
+      placeholder: powkiddy-x55 / kodi
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Resultado esperado
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Resultado observado
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs e passos para reproduzir
+      render: text
+    validations:
+      required: false

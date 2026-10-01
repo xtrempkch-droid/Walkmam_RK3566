@@ -1,0 +1,7 @@
+systemd-sysv
+udev
+ifupdown
+network-manager
+openssh-server
+sudo
+nano

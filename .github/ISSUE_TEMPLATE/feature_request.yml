@@ -1,0 +1,24 @@
+name: Solicitar uma melhoria
+description: Proponha uma melhoria de build, dispositivo ou variante.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Necessidade
+      description: Qual problema ou necessidade a melhoria resolve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposta
+    validations:
+      required: true
+  - type: input
+    id: target
+    attributes:
+      label: Dispositivo ou variante relacionada
+    validations:
+      required: false

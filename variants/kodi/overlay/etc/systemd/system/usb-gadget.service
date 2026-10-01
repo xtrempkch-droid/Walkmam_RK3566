@@ -1,0 +1,12 @@
+[Unit]
+Description=USB Ethernet Gadget (g_ether) para SSH via cabo USB-C
+After=sys-kernel-config.mount
+Before=ssh.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/setup-usb-gadget.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
