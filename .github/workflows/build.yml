@@ -287,27 +287,19 @@ jobs:
         echo "--> Verificando se os dtbs da X55 e X35S foram gerados:"
         find arch/arm64/boot/dts/rockchip -iname '*powkiddy-x55*' -o -iname '*powkiddy-x35s*'
 
-        echo "--> Forçando dr_mode=peripheral no NOSSO .dtb compilado também (mesmo"
-        echo "--> fix aplicado no .dtb oficial — erro 'ep0out' apareceu nos dois)."
+        echo "--> USB: NÃO forçamos mais dr_mode. O gadget funciona no X55, que usa o"
+        echo "--> padrão 'otg' do SoC (rk356x-base.dtsi); forçar 'peripheral' nos DTBs da"
+        echo "--> X35S (o que este workflow fazia) era a única diferença de USB entre a"
+        echo "--> imagem que funciona (X55) e a que falha (X35H)."
+        X55_DTB_PATH=arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x55.dtb
+        if [ -f "$X55_DTB_PATH" ]; then
+          echo "--> [USB] dr_mode no DTB da X55 (referência que funciona):"
+          dtc -I dtb -O dts "$X55_DTB_PATH" 2>/dev/null | grep -A5 'usb@fcc00000' || true
+        fi
         DTB_PATH=arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dtb
         if [ -f "$DTB_PATH" ]; then
-          dtc -I dtb -O dts -o /tmp/nosso-x35s.dts "$DTB_PATH" 2>/dev/null
-          awk '
-            /usb@fcc00000[ \t]*\{/ { inblk=1; depth=1; found=0; print; next }
-            inblk {
-              n=gsub(/\{/,"{"); depth+=n
-              n=gsub(/\}/,"}"); depth-=n
-              if ($0 ~ /dr_mode = /) { sub(/dr_mode = "[a-zA-Z]*";/, "dr_mode = \"peripheral\";"); found=1 }
-              if (depth<=0 && !found) { print "\t\tdr_mode = \"peripheral\";" }
-              print
-              if (depth<=0) inblk=0
-              next
-            }
-            { print }
-          ' /tmp/nosso-x35s.dts > /tmp/nosso-x35s.dts.new
-          dtc -I dts -O dtb -o "$DTB_PATH" /tmp/nosso-x35s.dts.new 2>&1 | tail -20
-          echo "--> Confirmando:"
-          dtc -I dtb -O dts "$DTB_PATH" 2>/dev/null | grep -A5 'usb@fcc00000'
+          echo "--> [USB] dr_mode no NOSSO DTB da X35S (não modificado):"
+          dtc -I dtb -O dts "$DTB_PATH" 2>/dev/null | grep -A5 'usb@fcc00000' || true
         fi
 
         echo "--> DIAGNÓSTICO: tudo relacionado a 'panel' no rk3566-powkiddy-x35s.dts"
@@ -414,28 +406,11 @@ jobs:
             echo "--> Confirmando que a mudança entrou:"
             dtc -I dtb -O dts rocknix-official-x35s.dtb 2>/dev/null | grep -A2 'hdmi@fe0a0000'
 
-            echo "--> Forçando dr_mode=peripheral no controlador USB (fcc00000.usb) — o erro"
-            echo "--> 'failed to enable ep0out' apareceu em TODOS os testes até agora, com"
-            echo "--> qualquer .dtb, sugerindo que o modo OTG dinâmico não está detectando"
-            echo "--> VBUS/ID de forma confiável. Forçar modo 'peripheral' puro é o fix padrão."
-            dtc -I dtb -O dts -o rocknix-official-x35s.dts rocknix-official-x35s.dtb 2>/dev/null
-            awk '
-              /usb@fcc00000[ \t]*\{/ { inblk=1; depth=1; found=0; print; next }
-              inblk {
-                n=gsub(/\{/,"{"); depth+=n
-                n=gsub(/\}/,"}"); depth-=n
-                if ($0 ~ /dr_mode = /) { sub(/dr_mode = "[a-zA-Z]*";/, "dr_mode = \"peripheral\";"); found=1 }
-                if (depth<=0 && !found) { print "\t\tdr_mode = \"peripheral\";" }
-                print
-                if (depth<=0) inblk=0
-                next
-              }
-              { print }
-            ' rocknix-official-x35s.dts > rocknix-official-x35s.dts.new
-            mv rocknix-official-x35s.dts.new rocknix-official-x35s.dts
-            dtc -I dts -O dtb -o rocknix-official-x35s.dtb rocknix-official-x35s.dts 2>&1 | tail -20
-            echo "--> Confirmando:"
-            dtc -I dtb -O dts rocknix-official-x35s.dtb 2>/dev/null | grep -A5 'usb@fcc00000'
+            echo "--> USB: NÃO forçamos dr_mode. Mantemos o valor do próprio .dtb (o SoC"
+            echo "--> base usa 'otg', igual ao X55, onde o gadget funciona). O 'peripheral'"
+            echo "--> que forçávamos aqui era a única diferença de USB entre as imagens."
+            echo "--> [USB] dr_mode no .dtb oficial da ROCKNIX (não modificado):"
+            dtc -I dtb -O dts rocknix-official-x35s.dtb 2>/dev/null | grep -A5 'usb@fcc00000' || true
           else
             echo "!!! .dtb da X35S não encontrado dentro do release (procure manualmente)."
             sudo find /mnt/rocknix-boot -iname '*.dtb' | sort
@@ -500,6 +475,23 @@ jobs:
           echo
           echo "----- /sys/class/udc (controlador USB em modo gadget) -----"
           ls -la /sys/class/udc/ 2>&1
+          echo
+          echo "----- USB: dr_mode do nó usb@fcc00000 no device tree em uso -----"
+          cat /proc/device-tree/usb@fcc00000/dr_mode 2>&1 || echo "(nó/atributo ausente)"
+          echo
+          echo "----- USB: estado dos UDC (gadget) -----"
+          for f in /sys/class/udc/*/state; do
+            printf '%s: ' "$f"; cat "$f" 2>&1
+          done
+          echo
+          echo "----- USB: papéis (usb_role) -----"
+          ls -la /sys/class/usb_role/ 2>&1
+          for f in /sys/class/usb_role/*/role; do
+            printf '%s: ' "$f"; cat "$f" 2>&1
+          done
+          echo
+          echo "----- USB: dmesg filtrado (dwc3 / ep0 / phy / g_ether) -----"
+          dmesg | grep -iE 'dwc3|ep0|usb2phy|g_ether|udc|drd' || echo "(nada relacionado)"
           echo
           echo "----- ip addr (interfaces de rede) -----"
           ip addr
@@ -671,6 +663,39 @@ jobs:
           echo "!!! botões/analógico, USB com erro de ep0out)."
         fi
 
+        # Variante alternativa do DTB da X35S/X35H com dr_mode="peripheral" no
+        # controlador USB (usb@fcc00000). É só para teste: o padrão continua sendo o
+        # DTB original (dr_mode do SoC, 'otg'), igual ao X55, onde o gadget funciona.
+        # Para usar esta variante: no PC (partição FAT), copie
+        # extlinux/extlinux.conf.x35s-peripheral por cima de extlinux/extlinux.conf.
+        X35S_DTB_FILE="/mnt/boot/${X35S_DEFAULT}"
+        PERIPH_FDT=""
+        if [ -f "$X35S_DTB_FILE" ]; then
+          X35S_PERIPH="/mnt/boot/dtbs/$(basename "${X35S_DTB_FILE%.dtb}")-peripheral.dtb"
+          if dtc -I dtb -O dts -o /tmp/x35s-periph.dts "$X35S_DTB_FILE" 2>/dev/null; then
+            awk '
+              /usb@fcc00000[ \t]*\{/ { inblk=1; depth=1; found=0; print; next }
+              inblk {
+                n=gsub(/\{/,"{"); depth+=n
+                n=gsub(/\}/,"}"); depth-=n
+                if ($0 ~ /dr_mode = /) { sub(/dr_mode = "[a-zA-Z]*";/, "dr_mode = \"peripheral\";"); found=1 }
+                if (depth<=0 && !found) { print "\t\tdr_mode = \"peripheral\";" }
+                print
+                if (depth<=0) inblk=0
+                next
+              }
+              { print }
+            ' /tmp/x35s-periph.dts > /tmp/x35s-periph.dts.new
+            if dtc -I dts -O dtb -o "$X35S_PERIPH" /tmp/x35s-periph.dts.new 2>/dev/null; then
+              PERIPH_FDT="/dtbs/$(basename "$X35S_PERIPH")"
+              echo "--> Variante USB 'peripheral' criada: $X35S_PERIPH"
+              dtc -I dtb -O dts "$X35S_PERIPH" 2>/dev/null | grep -A5 'usb@fcc00000' || true
+            else
+              echo "!!! Falha ao gerar a variante 'peripheral'; só o DTB padrão (otg) irá."
+            fi
+          fi
+        fi
+
         echo "--> Gravando walkmam.conf (rotação da interface Kodi; editável no PC)..."
         cat << 'WALKMAMCONF' > /mnt/boot/walkmam.conf
         # Configuração editável do Walkmam. Lida no boot por start-kodi-wayland.sh.
@@ -706,6 +731,16 @@ jobs:
             FDT /dtbs/rk3566-powkiddy-x55.dtb
             APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw
         BOOTCFG2
+
+        if [ -n "$PERIPH_FDT" ]; then
+          cat << PERIPHBOOT > /mnt/boot/extlinux/extlinux.conf.x35s-peripheral
+        LABEL Walkmam (X35H/X35S - USB peripheral, teste)
+            KERNEL /Image
+            FDT $PERIPH_FDT
+            APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw
+        PERIPHBOOT
+          echo "--> Alternativa de boot gravada: extlinux/extlinux.conf.x35s-peripheral"
+        fi
 
         echo "--> Copiando rootfs..."
         cp -a rootfs/* /mnt/rootfs/

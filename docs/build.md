@@ -47,12 +47,20 @@ acidental pela imagem/DTB anterior.
 
 O painel declara orientação DRM `left-up`, que o console aplica, mas o Kodi em
 GBM direto escolhe o modo DSI nativo 720x1280 sem transformar a superfície. Para
-girar somente a interface Kodi, a sessão agora inicia Weston no backend DRM,
-com shell kiosk, e executa Kodi como cliente Wayland. `/etc/xdg/weston/weston.ini`
-aplica `transform=270` somente à saída `DSI-1`; o terminal permanece sob a
-orientação existente do framebuffer. Isso adiciona uma etapa de composição,
-portanto a orientação e a reprodução de vídeo acelerada precisam ser
-confirmadas no X55 com a nova imagem antes de considerar a rotação concluída.
+girar somente a interface Kodi, a sessão inicia Weston no backend DRM, com shell
+kiosk, e executa Kodi como cliente Wayland. A rotação da saída `DSI-1` não fica
+fixa no `weston.ini`: `start-kodi-wayland.sh` lê `display_transform=<valor>` de
+`/boot/walkmam.conf` (partição FAT, editável no PC), valida contra os oito
+valores aceitos pelo Weston (`normal`, `rotate-90`, `rotate-180`, `rotate-270` e
+as variantes `flipped-*`) e gera o `weston.ini` efetivo em `$XDG_RUNTIME_DIR`;
+valor ausente ou inválido cai em `normal`, com aviso no journal. O valor
+histórico `transform=270` era inválido (o Weston aceita `rotate-270`, não `270`)
+e foi retirado. O terminal permanece sob a orientação existente do framebuffer.
+Como isso adiciona uma etapa de composição, a orientação e a reprodução de vídeo
+acelerada precisam ser confirmadas no aparelho antes de considerar a rotação
+concluída. O sentido correto no X55 (`rotate-90` ou `rotate-270`) ainda não foi
+validado; `build/create-image.sh` grava `rotate-270` para o X55 como ponto de
+partida (e `normal` para X35S/X35H).
 
 O primeiro diagnóstico da v6 mostra `kodi.service` encerrando com status 1
 antes da criação de `kodi.log`; portanto, não confirma que o Kodi chegou a
@@ -62,6 +70,35 @@ corrigido para usar esse nome. O script de diagnóstico inclui o log Weston, os
 nós DRM e o estado completo do serviço; erros do compositor também são
 copiados para o journal. Reinicializações repetidamente malsucedidas são
 limitadas.
+
+## USB gadget (SSH pelo cabo): funciona no X55, falha na X35S/X35H
+
+O gadget ethernet (`g_ether`) funciona na X55: o PC enxerga a `usb0` e o SSH
+responde pelo cabo. Na X35H (imagem com o DTB da X35S) o kernel registra
+`dwc3 fcc00000.usb: failed to enable ep0out` e o PC não vê nada.
+
+O controlador OTG é o `usb_host0_xhci` (`usb@fcc00000`), um DWC3. No SoC base
+(`rk356x-base.dtsi`) ele sai com `dr_mode = "otg"`, e nenhum DTS de placa
+altera esse valor: o mainline da X55 e os patches da ROCKNIX (reescrita do X55 e
+criação do X35S) não tocam em USB. O DTS da X35S da ROCKNIX é
+`#include "rk3566-powkiddy-x55.dts"` e só sobrescreve `model`, `battery`,
+`joypad` e `panel`.
+
+Até esta rodada o workflow **forçava `dr_mode = "peripheral"` apenas nos DTBs da
+X35S** (o compilado e o oficial da ROCKNIX), o que era a única diferença de USB
+entre a imagem que funciona (X55, `otg`) e a que falha (X35H). O forcing foi
+removido; os DTBs ficam como vieram (`otg`), igual ao X55.
+
+Para testar o outro cenário sem recompilar, a imagem inclui um DTB alternativo
+com `dr_mode = "peripheral"` e uma entrada de boot correspondente: no PC
+(partição FAT), copie `extlinux/extlinux.conf.x35s-peripheral` por cima de
+`extlinux/extlinux.conf`. O padrão continua sendo `otg`.
+
+O diagnóstico (`diagnostico.txt`) passou a registrar o `dr_mode` em uso
+(`/proc/device-tree/usb@fcc00000/dr_mode`), o estado dos UDC, os papéis
+(`usb_role`) e o `dmesg` filtrado em `dwc3`/`ep0`. É **hipótese** que remover o
+`peripheral` resolva; se `otg` também falhar na X35H, a causa passa a ser
+hardware (VBUS/ID da porta) ou o PHY.
 
 ## Empacotamento local
 
