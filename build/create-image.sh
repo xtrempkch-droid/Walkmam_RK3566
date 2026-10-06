@@ -134,6 +134,32 @@ for dtb in "$KERNEL_DIR"/arch/arm64/boot/dts/rockchip/rk3566-powkiddy-*.dtb; do
 done
 cp "$DTB_FILE" "$BOOT_MOUNT/dtbs/$DTB_NAME"
 
+# Rotação da interface Kodi/Weston na saída DSI-1. O valor fica em
+# walkmam.conf, na partição FAT (BOOT): dá para editar no PC e testar outro
+# valor sem recompilar. Valores válidos do Weston: normal, rotate-90,
+# rotate-180, rotate-270, flipped, flipped-rotate-90, flipped-rotate-180,
+# flipped-rotate-270 (não existe "270" sozinho).
+case $DEVICE in
+    powkiddy-x55)
+        # Painel 720x1280 (retrato) em aparelho horizontal. Sentido NÃO validado
+        # no hardware: se a imagem sair de cabeça para baixo, troque por rotate-90.
+        DISPLAY_TRANSFORM=rotate-270
+        ;;
+    powkiddy-x35s|powkiddy-x35h)
+        # Painel 640x480 com rotation = <0> no DTS; mesmo DTB nos dois.
+        DISPLAY_TRANSFORM=normal
+        ;;
+    *)
+        DISPLAY_TRANSFORM=normal
+        ;;
+esac
+cat > "$BOOT_MOUNT/walkmam.conf" << CONF
+# Configuração editável do Walkmam. Lida no boot por start-kodi-wayland.sh.
+# display_transform: normal | rotate-90 | rotate-180 | rotate-270 |
+#                    flipped | flipped-rotate-90 | flipped-rotate-180 | flipped-rotate-270
+display_transform=$DISPLAY_TRANSFORM
+CONF
+
 X35S_DTB="$KERNEL_DIR/arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dtb"
 if [[ $DEVICE == powkiddy-x35s && $(basename -- "$DTB_FILE") == rocknix-official-x35s.dtb ]]; then
     cp "$DTB_FILE" "$BOOT_MOUNT/dtbs/rk3566-powkiddy-x35s-rocknix.dtb"

@@ -4,17 +4,28 @@ Ordem por impacto e por risco. O que depende de teste no aparelho está marcado.
 
 ## 1. Configuração por dispositivo (a mais importante)
 
-Hoje o workflow e o overlay do Kodi misturam coisas do X55 e da X35S/X35H. A estrutura
-`devices/<device>/` do repo já existe para separar isso. Proposta:
+Hoje o workflow e o overlay do Kodi misturam coisas do X55 e da X35S/X35H.
 
-- `device.conf` ganha campos como `DISPLAY_TRANSFORM` (`270` no X55, `normal` na
-  X35S/X35H), `DTB_NAME` e `GAMEPAD_BUTTONMAP`.
-- `devices/<device>/overlay/` guarda o `weston.ini` do aparelho. O `build/` copia o
-  overlay do device depois do overlay da variante.
-- O mapa de botões do Kodi vira um arquivo por contagem de botões e eixos
-  (`retrogame_joypad_17b_4a.xml`, e outro quando a X35H for medida).
+Feito nesta rodada (ainda sem teste em hardware):
 
-Aceite: imagem do X35H com interface na orientação certa, imagem do X55 com 270,
+- `start-kodi-wayland.sh` lê `display_transform=<valor>` de `/boot/walkmam.conf`
+  (partição FAT, editável no PC), valida contra os 8 valores do Weston, gera o
+  `weston.ini` em `$XDG_RUNTIME_DIR` e avisa no journal se o valor for inválido.
+- `build/create-image.sh` grava o `walkmam.conf` com o padrão do aparelho: `normal`
+  para X35S/X35H, `rotate-270` para o X55 (sentido não validado).
+
+Falta:
+
+- Fazer o workflow usar o `create-image.sh` (hoje a imagem é montada inline e não
+  grava o `walkmam.conf`; sem ele o padrão é `normal`).
+- Mover o padrão do `case` do `create-image.sh` para `display_transform=` no
+  `device.conf` de cada aparelho.
+- No X55, testar `rotate-270` e `rotate-90` editando o `walkmam.conf` e registrar qual
+  deixa a interface correta.
+- Adicionar `/var/log/weston.log` e `/boot/walkmam.conf` ao `dump-diagnostico.sh`.
+- O mapa de botões do Kodi vira um arquivo por contagem de botões e eixos.
+
+Aceite: imagem do X35H com interface na orientação certa e imagem do X55 na dela,
 sem editar o workflow para trocar.
 
 ## 2. Fechar o gamepad na X35H (precisa de teste)
