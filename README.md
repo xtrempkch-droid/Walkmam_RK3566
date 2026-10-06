@@ -54,6 +54,9 @@ Para executar o build completo, use **Actions → Build Mainline RK3566 (Powkidd
 
 ## Documentação
 
+- [Estado do projeto e retomada](docs/status.md) — comece por aqui
 - [Fluxo de build](docs/build.md)
+- [Descobertas de hardware (confirmado/hipótese)](docs/findings.md)
+- [Roadmap](docs/roadmap.md)
 - [Porting de dispositivos](docs/porting.md)
 - [Arquitetura e estado da migração](docs/architecture.md)
