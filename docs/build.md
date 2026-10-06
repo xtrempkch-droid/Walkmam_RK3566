@@ -98,7 +98,9 @@ O diagnóstico (`diagnostico.txt`) passou a registrar o `dr_mode` em uso
 (`/proc/device-tree/usb@fcc00000/dr_mode`), o estado dos UDC, os papéis
 (`usb_role`) e o `dmesg` filtrado em `dwc3`/`ep0`. É **hipótese** que remover o
 `peripheral` resolva; se `otg` também falhar na X35H, a causa passa a ser
-hardware (VBUS/ID da porta) ou o PHY.
+hardware (VBUS/ID da porta) ou o PHY. O script do diagnóstico vem de
+`variants/kodi/overlay/usr/local/bin/dump-diagnostico.sh` (o CI o instala com
+`install`, sem cópia inline no `build.yml`).
 
 ## Empacotamento local
 

@@ -34,7 +34,9 @@ aparelhos, trocando o `FDT` no `extlinux.conf`.
   - Para usar qualquer uma: no PC, copie o conteúdo escolhido **por cima** de
     `extlinux.conf`.
 - **Diagnóstico:** `diagnostico.txt` na raiz da partição FAT, gravado pelo serviço
-  `dump-diagnostico` cerca de 15 s depois do boot. Tire o cartão e leia no PC.
+  `dump-diagnostico` cerca de 15 s depois do boot. Tire o cartão e leia no PC. O script
+  vem de `variants/kodi/overlay/usr/local/bin/dump-diagnostico.sh` (o CI o instala com
+  `install`; não há mais cópia inline no `build.yml`).
 - **Acesso:** a senha do `root` é `root` e o SSH está habilitado (ver "Segurança" no
   `docs/roadmap.md`).
 
@@ -124,6 +126,15 @@ compilação; o `diagnostico.txt` mostra o que aconteceu no aparelho.
 - Terminador de heredoc dentro de um `run: |` precisa ficar na indentação base do bloco.
 - `: ` (dois-pontos e espaço) no `name:` de um step quebra o YAML.
 - `find` retorna 0 mesmo quando não acha nada — não dá para checar por código de saída.
+- Em `sudo bash -c '...'` no `build.yml`, **não usar aspas simples** no conteúdo: elas
+  fecham o `'...'` do `bash -c` e quebram o heredoc. Foi o que derrubou o CI no run #82,
+  com `ep0: command not found` e
+  `here-document ... delimited by end-of-file (wanted 'EOF')`. Usar aspas duplas.
+- **`bash -n` não pega esse erro** de aspas: o número de aspas pode ficar par e o
+  arquivo "parseia", mas o heredoc sai errado. Validar a estrutura à parte.
+- Não duplicar scripts entre o `build.yml` e `variants/`: o `dump-diagnostico.sh` era
+  mantido nos dois lugares e as cópias divergiram. Agora o CI instala o arquivo do
+  overlay com `install` (fonte única em `variants/kodi/overlay/usr/local/bin/`).
 - Alterar um `.dts` **depois** de `make dtbs` não afeta o `.dtb` já compilado.
 - O log do CI e o `diagnostico.txt` são arquivos diferentes (ver acima).
 - Não inventar GPIOs, nomes de `CONFIG_` nem valores de pinagem: usar só fonte confirmada.

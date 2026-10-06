@@ -55,8 +55,14 @@ OUT=/boot/diagnostico.txt
   echo "----- journalctl -b -u kodi (ultimas 100 linhas) -----"
   journalctl -b -u kodi -n 100 --no-pager
   echo
-  echo "----- /var/log/weston.log (compositor DRM/Wayland) -----"
+  echo "----- /var/log/weston.log (procure Invalid transform) -----"
   cat /var/log/weston.log 2>&1 || echo "(arquivo não existe ainda)"
+  echo
+  echo "----- /boot/walkmam.conf -----"
+  cat /boot/walkmam.conf 2>&1 || echo "(arquivo não existe)"
+  echo
+  echo "----- weston.ini efetivo (gerado no boot) -----"
+  cat /run/kodi-wayland/weston.ini 2>&1 || echo "(arquivo não existe)"
   echo
   echo "----- dispositivos DRM -----"
   ls -la /dev/dri/ 2>&1
