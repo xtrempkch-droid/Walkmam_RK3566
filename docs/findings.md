@@ -80,11 +80,25 @@ hipótese como fato ao portar outra placa.
 - O pacote Kodi do Debian bookworm suporta `--windowing=gbm`.
 - Com GBM direto, o Kodi usa o modo nativo do painel sem rotacionar. No X55 (painel
   720x1280) isso deixava a interface girada. A solução atual é Weston (backend
-  DRM, shell kiosk) com `transform=270` na saída `DSI-1`.
+  DRM, shell kiosk) com rotação na saída `DSI-1` (o valor usado até agora, `270`, é
+  inválido; ver abaixo).
 - Em versões do Weston desta distro o backend se chama `drm-backend.so`, não `drm`.
-- **Risco para a X35S/X35H:** o painel dela é 640x480 com `rotation = <0>`. O mesmo
-  `transform=270` pode girar errado a interface. O teste na X35H funcionou, mas
-  falta registrar o que exatamente foi validado.
+- **`transform=270` é inválido no Weston.** As man pages do Weston (`weston.ini(5)` e
+  `weston-drm(7)`) listam só `normal`, `rotate-90`, `rotate-180`, `rotate-270` e as
+  variantes `flipped-*`. O `weston.ini` do repo usava `transform=270`. O efeito exato
+  de um valor inválido (ignorar a linha ou rejeitar a saída) **não foi verificado**;
+  o `weston.log` mostra se ele registrou `Invalid transform`.
+- **Hipótese consistente com os testes:** se o Weston ignorou o valor, a saída ficou
+  `normal`. Isso explicaria a X35H "funcionar certinho" (ela quer `normal`) e o X55
+  continuar sem a rotação desejada.
+- **X35S e X35H:** a wiki da ROCKNIX dá a mesma tela (3,5", 640x480) e o mesmo DTB
+  para as duas ("a X35H é a versão horizontal da X35S"). O DTS tem `rotation = <0>`.
+  Não há evidência de rotação diferente entre elas; o esperado é `normal` nas duas.
+  (Uma afirmação anterior deste projeto, de que a X35S precisaria de rotação própria
+  por ser "vertical", não tem base e foi retirada.)
+- **X55:** painel 720x1280 (retrato) com orientação DRM `left-up`. O sentido correto
+  em nomenclatura do Weston (`rotate-90` ou `rotate-270`) **não foi validado**; por isso
+  o valor é editável em `/boot/walkmam.conf` (ver `build.md`).
 
 ## Itens que apareceram nos logs e ainda não foram tratados
 

@@ -509,6 +509,15 @@ jobs:
           echo
           echo "----- /root/.kodi/temp/kodi.log (log interno do Kodi, GBM/DRM) -----"
           cat /root/.kodi/temp/kodi.log 2>&1 || echo "(arquivo não existe ainda)"
+          echo
+          echo "----- /var/log/weston.log (procure 'Invalid transform') -----"
+          cat /var/log/weston.log 2>&1 || echo "(arquivo não existe)"
+          echo
+          echo "----- /boot/walkmam.conf -----"
+          cat /boot/walkmam.conf 2>&1 || echo "(arquivo não existe)"
+          echo
+          echo "----- weston.ini efetivo (gerado no boot) -----"
+          cat /run/kodi-wayland/weston.ini 2>&1 || echo "(arquivo não existe)"
         } > "$OUT" 2>&1
         EOF'
         sudo chmod +x rootfs/usr/local/bin/dump-diagnostico.sh
@@ -661,6 +670,14 @@ jobs:
           echo "!!! .dtb oficial da ROCKNIX não foi obtido — usando o nosso (incompleto: sem"
           echo "!!! botões/analógico, USB com erro de ep0out)."
         fi
+
+        echo "--> Gravando walkmam.conf (rotação da interface Kodi; editável no PC)..."
+        cat << 'WALKMAMCONF' > /mnt/boot/walkmam.conf
+        # Configuração editável do Walkmam. Lida no boot por start-kodi-wayland.sh.
+        # display_transform: normal | rotate-90 | rotate-180 | rotate-270 |
+        #                    flipped | flipped-rotate-90 | flipped-rotate-180 | flipped-rotate-270
+        display_transform=normal
+        WALKMAMCONF
 
         echo "--> Criando extlinux.conf (padrão: X35H/X35S — troque a linha FDT p/ X55)..."
         mkdir -p /mnt/boot/extlinux
