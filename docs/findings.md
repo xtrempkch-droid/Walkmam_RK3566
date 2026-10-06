@@ -64,16 +64,28 @@ hipótese como fato ao portar outra placa.
 - O arquivo `rocknix-singleadc-joypad.c` do mesmo repositório também usa
   `input-polldev.h`. Não foi confirmado que a X35S precise dele.
 
-## USB gadget (SSH pelo cabo) — NÃO resolvido
+## USB gadget (SSH pelo cabo): funciona no X55, falha na X35H
 
-- O controlador aparece em `/sys/class/udc/fcc00000.usb` e o `g_ether` carrega.
-- Mesmo assim o kernel registra `dwc3 fcc00000.usb: failed to enable ep0out`, em
-  todos os testes, com o `.dtb` oficial e com o nosso. O PC não lista nada no
-  `lsusb`, nas duas portas testadas.
-- Forçar `dr_mode = "peripheral"` foi implementado no workflow, mas o resultado no
-  aparelho ainda não foi relatado.
-- Hipóteses ainda abertas: detecção de VBUS/ID, fornecimento do PHY, hub interno ou
-  cabo sem fios de dados.
+- **Confirmado (teste no aparelho):** na X55 o gadget funciona — o PC enxerga a
+  `usb0` e o SSH responde pelo cabo. Na X35H o kernel registra
+  `dwc3 fcc00000.usb: failed to enable ep0out` e o PC não vê nada (nas duas portas
+  testadas, com o `.dtb` oficial e com o nosso).
+- **Confirmado (fontes):** o controlador OTG é `usb_host0_xhci` (`usb@fcc00000`,
+  DWC3). No SoC base (`rk356x-base.dtsi`) ele sai com `dr_mode = "otg"`. Nenhum
+  DTS de placa altera isso: o mainline da X55 e os patches da ROCKNIX (reescrita do
+  X55 e criação do X35S) não tocam em USB.
+- **Confirmado (fontes):** o DTS da X35S da ROCKNIX é
+  `#include "rk3566-powkiddy-x55.dts"` e só sobrescreve `model`, `battery`,
+  `joypad` e `panel`. Não há nó de USB próprio.
+- **Hipótese (pista principal):** até esta rodada o workflow forçava
+  `dr_mode = "peripheral"` **apenas nos DTBs da X35S**; era a única diferença de
+  USB entre a imagem que funciona (X55, `otg`) e a que falha. O forcing foi
+  removido; a imagem passou a oferecer também um DTB alternativo com `peripheral`
+  (`extlinux.conf.x35s-peripheral`) para teste no aparelho.
+- Hipóteses ainda abertas: detecção de VBUS/ID, fornecimento do PHY, hub interno,
+  cabo sem fios de dados, ou a porta da X35H ser host-only no hardware.
+- O `diagnostico.txt` agora traz o `dr_mode` em uso, o estado dos UDC e os papéis
+  (`usb_role`), para distinguir DTB errado de falha de hardware.
 
 ## Kodi e sessão gráfica
 

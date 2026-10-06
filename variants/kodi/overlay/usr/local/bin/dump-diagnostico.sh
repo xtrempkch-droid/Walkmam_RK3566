@@ -29,6 +29,23 @@ OUT=/boot/diagnostico.txt
   echo "----- /sys/class/udc (controlador USB em modo gadget) -----"
   ls -la /sys/class/udc/ 2>&1
   echo
+  echo "----- USB: dr_mode do nó usb@fcc00000 no device tree em uso -----"
+  cat /proc/device-tree/usb@fcc00000/dr_mode 2>&1 || echo "(nó/atributo ausente)"
+  echo
+  echo "----- USB: estado dos UDC (gadget) -----"
+  for f in /sys/class/udc/*/state; do
+    printf '%s: ' "$f"; cat "$f" 2>&1
+  done
+  echo
+  echo "----- USB: papéis (usb_role) -----"
+  ls -la /sys/class/usb_role/ 2>&1
+  for f in /sys/class/usb_role/*/role; do
+    printf '%s: ' "$f"; cat "$f" 2>&1
+  done
+  echo
+  echo "----- USB: dmesg filtrado (dwc3 / ep0 / phy / g_ether) -----"
+  dmesg | grep -iE 'dwc3|ep0|usb2phy|g_ether|udc|drd' || echo "(nada relacionado)"
+  echo
   echo "----- ip addr (interfaces de rede) -----"
   ip addr
   echo

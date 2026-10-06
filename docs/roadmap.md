@@ -13,16 +13,22 @@ Feito nesta rodada (ainda sem teste em hardware):
   `weston.ini` em `$XDG_RUNTIME_DIR` e avisa no journal se o valor for inválido.
 - `build/create-image.sh` grava o `walkmam.conf` com o padrão do aparelho: `normal`
   para X35S/X35H, `rotate-270` para o X55 (sentido não validado).
+- Removido o `dr_mode = "peripheral"` que o workflow forçava só nos DTBs da X35S (era
+  a única diferença de USB para o X55, onde o gadget funciona); a imagem passou a
+  oferecer também um DTB alternativo com `peripheral`
+  (`extlinux.conf.x35s-peripheral`).
+- `dump-diagnostico` inclui `/var/log/weston.log`, `/boot/walkmam.conf`, o `weston.ini`
+  efetivo e, para o USB, o `dr_mode` em uso, os UDC e os papéis (`usb_role`).
 
 Falta:
 
-- Fazer o workflow usar o `create-image.sh` (hoje a imagem é montada inline e não
-  grava o `walkmam.conf`; sem ele o padrão é `normal`).
+- Fazer o workflow usar o `create-image.sh` (hoje a imagem é montada inline — ela já
+  grava o `walkmam.conf`, mas com `normal` fixo, então o X55 não recebe `rotate-270`
+  automaticamente).
 - Mover o padrão do `case` do `create-image.sh` para `display_transform=` no
   `device.conf` de cada aparelho.
 - No X55, testar `rotate-270` e `rotate-90` editando o `walkmam.conf` e registrar qual
   deixa a interface correta.
-- Adicionar `/var/log/weston.log` e `/boot/walkmam.conf` ao `dump-diagnostico.sh`.
 - O mapa de botões do Kodi vira um arquivo por contagem de botões e eixos.
 
 Aceite: imagem do X35H com interface na orientação certa e imagem do X55 na dela,
@@ -36,12 +42,21 @@ sem editar o workflow para trocar.
 4. Confirmar que o DTS da X35S herda o nó `rocknix-joypad` do X55; se não herdar,
    criar o nó para a X35S a partir de fonte confirmada (sem inferir GPIOs).
 
-## 3. USB gadget para SSH (precisa de teste)
+## 3. USB gadget para SSH (funciona no X55, falha na X35H — precisa de teste)
 
-1. Ler o `diagnostico.txt` de uma imagem com `dr_mode = "peripheral"` aplicado.
-2. Se o `ep0out` continuar, comparar o nó `usb@fcc00000` e o `usb2phy` do `.dtb`
-   oficial da ROCKNIX com os nossos (decompilar os dois e comparar com `diff`).
-3. Testar outro cabo com fios de dados confirmados.
+O gadget funciona na X55 (`dr_mode` herdado do SoC, `otg`) e falha na X35H. Como os
+DTS da X35S e da X55 não diferem em USB, a única diferença que introduzíamos era
+forçar `dr_mode = "peripheral"` nos DTBs da X35S — removido nesta rodada.
+
+1. Gravar a imagem e testar na X35H o padrão (`otg`, DTB original): ler o
+   `diagnostico.txt` (agora traz o `dr_mode` em uso, o estado dos UDC e o `dmesg`
+   filtrado em `dwc3`/`ep0`).
+2. Se o `ep0out` continuar, repetir com a entrada alternativa
+   (`extlinux.conf.x35s-peripheral`, `dr_mode = "peripheral"`) e registrar qual das
+   duas funciona.
+3. Se nenhuma funcionar, comparar `usb@fcc00000`/`usb2phy0_otg` do `.dtb` oficial com
+   os do X55 (o CI agora imprime esses nós no log do Actions) e testar outro cabo com
+   fios de dados confirmados. Considerar VBUS/ID e a porta ser host-only.
 
 ## 4. Robustez do CI
 
