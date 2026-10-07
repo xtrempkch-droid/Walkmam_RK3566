@@ -5,9 +5,11 @@ está pronto, o que ainda é **hipótese** e exatamente o que testar e devolver.
 
 ## Como retomar (leia isto primeiro)
 
-1. A imagem já está **pronta e publicada**: build **#84**, verde, no `main` (commit
-   `836f3b5`). Baixe o artifact `rk3566-x55-mainline-sdcard-image` **do run #84**
-   (não do #83, que falhou).
+1. A imagem já está **pronta e publicada**: pegue o artifact
+   `rk3566-x55-mainline-sdcard-image` do **run verde (success) mais recente** em
+   Actions. O run **#84** foi o verificado nesta rodada; os runs seguintes só mudaram
+   documentação, então a imagem é equivalente. **Não** use runs com `failure` (o #82 e
+   o #83 falharam por um bug de aspas no `build.yml`, já corrigido).
 2. Grave no cartão e faça os testes da seção **"Testes a fazer"**.
 3. Me mande o **`diagnostico.txt`** de cada boot que interessar (e o trecho do
    `weston.log` / `dmesg` quando o teste for de rotação / áudio / vídeo).
@@ -36,7 +38,7 @@ do `dr_mode = "peripheral"` forçado nos DTBs da X35S (PR #6).
 ## Gerar e gravar a imagem
 
 1. No GitHub: **Actions → "Build Mainline RK3566 (Powkiddy X55) OS"** → escolha o run
-   **#84** (verde) → baixe o artifact. Para gerar de novo, use *Run workflow*.
+   **verde mais recente** → baixe o artifact. Para gerar de novo, use *Run workflow*.
    (Um push no `main` também dispara o build automaticamente.)
 2. Baixe o artifact **`rk3566-x55-mainline-sdcard-image`** (contém
    `rk3566-x55-mainline-sdcard.img.gz`).
