@@ -3,12 +3,40 @@
 Ponto de partida para continuar o trabalho depois de testar no aparelho. Diz o que já
 está pronto, o que ainda é **hipótese** e exatamente o que testar e devolver.
 
-Última mudança grande já mesclada no `main`: rotação configurável (PR #5) e remoção do
-`dr_mode = "peripheral"` forçado nos DTBs da X35S (PR #6).
+## Como retomar (leia isto primeiro)
+
+1. A imagem já está **pronta e publicada**: build **#84**, verde, no `main` (commit
+   `836f3b5`). Baixe o artifact `rk3566-x55-mainline-sdcard-image` **do run #84**
+   (não do #83, que falhou).
+2. Grave no cartão e faça os testes da seção **"Testes a fazer"**.
+3. Me mande o **`diagnostico.txt`** de cada boot que interessar (e o trecho do
+   `weston.log` / `dmesg` quando o teste for de rotação / áudio / vídeo).
+4. Com os dados eu fecho cada hipótese: a tabela **"Confirmado x hipótese"** diz o que
+   ainda é suposição.
+
+## Estado do CI
+
+| Run | Commit | Resultado | Observação |
+| --- | --- | --- | --- |
+| #84 | `836f3b5` (fix) | **success** | artefato gerado, é o que deve ser usado |
+| #83 | `664b057` (docs) | failure | mesmo bug de aspas do #82; ignorar |
+| #82 | `68c5c77` (merge USB) | failure | bug de aspas no `build.yml` |
+| #81 | `42e66b7` (merge rotação) | success | — |
+
+O #82/#83 falharam sempre no step **"Build Minimal RootFS (Debian ARM64)"**, com
+`ep0: command not found` e `here-document ... delimited by end-of-file`. Causa: o step
+escreve arquivos com `sudo bash -c 'cat << "EOF" ...'`, e havia **aspas simples dentro**
+desse bloco (fechavam o `'...'` do `bash -c`). Corrigido no #84 (aspas duplas e o
+`dump-diagnostico.sh` deixou de ser copiado inline — agora vem de `variants/` via
+`install`). A armadilha está na seção final deste documento.
+
+Últimas mudanças grandes já mescladas no `main`: rotação configurável (PR #5) e remoção
+do `dr_mode = "peripheral"` forçado nos DTBs da X35S (PR #6).
 
 ## Gerar e gravar a imagem
 
-1. No GitHub: **Actions → "Build Mainline RK3566 (Powkiddy X55) OS" → Run workflow**.
+1. No GitHub: **Actions → "Build Mainline RK3566 (Powkiddy X55) OS"** → escolha o run
+   **#84** (verde) → baixe o artifact. Para gerar de novo, use *Run workflow*.
    (Um push no `main` também dispara o build automaticamente.)
 2. Baixe o artifact **`rk3566-x55-mainline-sdcard-image`** (contém
    `rk3566-x55-mainline-sdcard.img.gz`).
@@ -73,6 +101,11 @@ Hipótese em teste: a única diferença de USB entre a imagem que funciona (X55)
 falhava era o `peripheral` que forçávamos. Se as duas opções falharem, a causa passa a
 ser hardware (VBUS/ID da porta, cabo sem fios de dados, ou a porta ser host-only).
 
+**Limitação conhecida deste diagnóstico:** o `dr_mode` que o CI imprime no log do
+Actions usa `grep -A5` e acaba **não** mostrando o atributo (ele fica depois das 5
+linhas). Ou seja, o log do CI **não** serve para conferir esse valor — use a seção USB
+do `diagnostico.txt`, que traz o `dr_mode` do device tree em uso.
+
 ### 2. Rotação da tela no X55
 
 1. Boote a X55 usando `extlinux.conf.x55` (copie por cima de `extlinux.conf`).
@@ -107,6 +140,19 @@ No `diagnostico.txt`, procure `/proc/bus/input/devices` e veja se aparece o
 
 O log do CI e o `diagnostico.txt` são coisas **diferentes**: o log do CI mostra a
 compilação; o `diagnostico.txt` mostra o que aconteceu no aparelho.
+
+## Pendências de código (para eu resolver, não dependem do aparelho)
+
+1. O dump do nó USB no log do CI usa `grep -A5` e não imprime o `dr_mode` (fica fora das
+   5 linhas). Trocar por algo que mostre o atributo (ex.: `grep -A20` ou filtrar só o
+   `dr_mode`). **Não refiz o build só por isso**, para não trocar o artefato que você vai
+   baixar; se mexer nisso, gere um run novo e use o artefato do run mais recente.
+2. O `build.yml` ainda monta a imagem **inline** (não usa o `build/create-image.sh`).
+   Consequência prática: a imagem do CI grava `walkmam.conf` com `display_transform=normal`
+   fixo, então o **X55 não recebe `rotate-270` automaticamente** (tem que editar à mão).
+   Fazer o CI usar o `create-image.sh` resolve isso e remove a duplicação.
+3. Mover o padrão de rotação do `case` do `create-image.sh` para `display_transform=` em
+   `devices/<placa>/device.conf`.
 
 ## Onde ficam as coisas no repositório
 

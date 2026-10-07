@@ -65,9 +65,18 @@ forçar `dr_mode = "peripheral"` nos DTBs da X35S — removido nesta rodada.
 - Fazer o job falhar quando faltar o `.dtb` ou o driver, em vez de seguir (já feito
   para o FDT; vale estender ao driver do painel e ao do joypad).
 - Usar o `build/create-image.sh` no workflow, em vez de manter a montagem da imagem
-  duplicada dentro do YAML.
+  duplicada dentro do YAML (isso também faz o X55 receber `rotate-270` automático).
 - Dar nome ao artifact pelo aparelho (`rk3566-<device>-<variant>`).
 - Reduzir o que o `diagnostico.txt` despeja, ou limitar o tamanho do arquivo.
+- Corrigir o dump do nó USB no log do CI: usa `grep -A5` e não imprime o `dr_mode`.
+- Evitar scripts duplicados entre o `build.yml` e `variants/`. O `dump-diagnostico.sh`
+  era mantido nos dois lugares e as cópias divergiram; já foi unificado (o CI instala o
+  arquivo do overlay). Vale revisar se há outros casos.
+- **Armadilha que derrubou o CI (runs #82 e #83):** o step do rootfs usa
+  `sudo bash -c 'cat << "EOF" ...'`, e aspas simples **dentro** desse bloco fecham o
+  `'...'` do `bash -c` e quebram o heredoc (sintoma: `ep0: command not found` e
+  `here-document ... delimited by end-of-file`). Usar aspas duplas. O `bash -n` sozinho
+  **não** detecta isso; se possível, validar a estrutura das aspas no CI.
 
 ## 5. Segurança mínima
 
