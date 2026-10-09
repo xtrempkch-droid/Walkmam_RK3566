@@ -64,37 +64,52 @@ hipótese como fato ao portar outra placa.
 - O arquivo `rocknix-singleadc-joypad.c` do mesmo repositório também usa
   `input-polldev.h`. Não foi confirmado que a X35S precise dele.
 
-## USB gadget (SSH pelo cabo): funciona no X55, falha na X35H
+## USB gadget (ancoragem SSH pelo cabo): não ancora (X55 e X35H)
 
-- **Confirmado (teste no aparelho):** na X55 o gadget funciona — o PC enxerga a
-  `usb0` e o SSH responde pelo cabo. Na X35H o kernel registra
+- **Relato mais recente (X55 com o DTB mainline da X55 ativo):** a ancoragem USB
+  **não funciona** — o PC não vê a `usb0`. Isso reabre o item: o "confirmado" de
+  rodadas anteriores foi obtido com outro DTB ativo (a imagem antiga bootava com o
+  DTB da X35S), então **não** dá para tratar a X55 como resolvida.
+- **Confirmado (teste no aparelho, rodada anterior):** na X35H o kernel registra
   `dwc3 fcc00000.usb: failed to enable ep0out` e o PC não vê nada (nas duas portas
   testadas, com o `.dtb` oficial e com o nosso).
 - **Confirmado (fontes):** o controlador OTG é `usb_host0_xhci` (`usb@fcc00000`,
-  DWC3). No SoC base (`rk356x-base.dtsi`) ele sai com `dr_mode = "otg"`. Nenhum
-  DTS de placa altera isso: o mainline da X55 e os patches da ROCKNIX (reescrita do
-  X55 e criação do X35S) não tocam em USB.
-- **Confirmado (fontes):** o DTS da X35S da ROCKNIX é
+  DWC3). No SoC base (`rk356x.dtsi`) ele sai com `dr_mode = "otg"` e
+  `status = "disabled"`; o DTS da X55 o habilita (`status = "okay"`) com
+  `phys = <&usb2phy0_otg>` **e `extcon = <&usb2phy0>`**. O `extcon` é quem decide o
+  papel host/device.
+- **Hipótese principal:** com `dr_mode = "otg"` **não há UDC** enquanto a detecção
+  de papel (VBUS/ID via `extcon`) não apontar *device*. Sem UDC, o `g_ether` não tem
+  onde se ligar → não existe `usb0`. Ou seja, o problema não é o driver, é o papel do
+  controlador.
+- **Fonte confirmada:** o DTS da X35S da ROCKNIX é
   `#include "rk3566-powkiddy-x55.dts"` e só sobrescreve `model`, `battery`,
-  `joypad` e `panel`. Não há nó de USB próprio.
-- **Hipótese (pista principal):** até esta rodada o workflow forçava
-  `dr_mode = "peripheral"` **apenas nos DTBs da X35S**; era a única diferença de
-  USB entre a imagem que funciona (X55, `otg`) e a que falha. O forcing foi
-  removido; a imagem passou a oferecer também um DTB alternativo com `peripheral`
-  (`extlinux.conf.x35s-peripheral`) para teste no aparelho.
+  `joypad` e `panel`. Não há nó de USB próprio — então X35S e X55 compartilham a
+  mesma configuração de USB.
+- **Como testar:** bootar com `dr_mode = "peripheral"` forçado no DTB ativo. A imagem
+  oferece `extlinux.conf.x55-peripheral` (X55) e `extlinux.conf.x35s-peripheral`
+  (X35S/X35H). O `setup-usb-gadget.sh` também tenta, em best-effort, escrever
+  `device` em `/sys/class/usb_role/*/role`, e grava tudo em `/boot/usb-gadget.log`.
 - Hipóteses ainda abertas: detecção de VBUS/ID, fornecimento do PHY, hub interno,
-  cabo sem fios de dados, ou a porta da X35H ser host-only no hardware.
-- O `diagnostico.txt` agora traz o `dr_mode` em uso, o estado dos UDC e os papéis
-  (`usb_role`), para distinguir DTB errado de falha de hardware.
+  cabo sem fios de dados, ou a porta ser host-only no hardware.
 
 ## Kodi e sessão gráfica
 
-- O pacote Kodi do Debian bookworm suporta `--windowing=gbm`.
+- O Debian bookworm traz **Kodi 20.1** (`2:20.1+dfsg-1`) e o build do Debian habilita
+  `x11`, **`wayland`** e **`gbm`** (`debian/rules`: `BUILD_WAYLAND := yes`,
+  `BUILD_GBM := yes`). Ou seja, `--windowing=wayland` **é** válido neste pacote.
 - Com GBM direto, o Kodi usa o modo nativo do painel sem rotacionar. No X55 (painel
   720x1280) isso deixava a interface girada. A solução atual é Weston (backend
   DRM, shell kiosk) com rotação na saída `DSI-1` (o valor usado até agora, `270`, é
   inválido; ver abaixo).
 - Em versões do Weston desta distro o backend se chama `drm-backend.so`, não `drm`.
+- **Bloqueio aberto (X55):** o Kodi não chega a mostrar a interface; a tela fica em
+  **loop** porque o `kodi.service` usa `Restart=always`. Como `--windowing=wayland` é
+  válido (acima), a causa é de **execução**, não de suporte. Para identificar o motivo,
+  `start-kodi-wayland.sh` agora grava a saída do Kodi em `/boot/kodi-start.log` e o
+  `weston.log` (com cópia em `/boot/weston-falhou.log` se o Weston morrer). Se
+  `kodi-start.log` não existir, o problema está no Weston; se existir, a mensagem nele
+  diz o motivo.
 - **`transform=270` é inválido no Weston.** As man pages do Weston (`weston.ini(5)` e
   `weston-drm(7)`) listam só `normal`, `rotate-90`, `rotate-180`, `rotate-270` e as
   variantes `flipped-*`. O `weston.ini` do repo usava `transform=270`. O efeito exato

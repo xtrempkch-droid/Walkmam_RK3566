@@ -1,8 +1,12 @@
 #!/bin/sh
-sleep 15
+# Diagnóstico de boot. Faz DUAS capturas (15s e 60s) porque a falha do Kodi/USB
+# costuma estar em ciclo (kodi.service reinicia) e o estado no instante importa.
 OUT=/boot/diagnostico.txt
-{
-  echo "===== $(date) ====="
+: > "$OUT"
+
+capture() {
+  {
+    echo "===== $(date -Is) — captura $1 ====="
   echo
   echo "----- /proc/cmdline (imagem e parametros de boot) -----"
   cat /proc/cmdline
@@ -17,15 +21,17 @@ OUT=/boot/diagnostico.txt
     fi
   done
   echo
-  echo "----- dmesg (log do kernel) -----"
-  dmesg
-  echo
-  echo "----- /proc/bus/input/devices (botoes/analogico) -----"
-  cat /proc/bus/input/devices
-  echo
-  echo "----- lsmod (modulos carregados) -----"
-  lsmod
-  echo
+  if [ "$1" = "15s" ]; then
+    echo "----- dmesg (log do kernel) -----"
+    dmesg
+    echo
+    echo "----- /proc/bus/input/devices (botoes/analogico) -----"
+    cat /proc/bus/input/devices
+    echo
+    echo "----- lsmod (modulos carregados) -----"
+    lsmod
+    echo
+  fi
   echo "----- /sys/class/udc (controlador USB em modo gadget) -----"
   ls -la /sys/class/udc/ 2>&1
   echo
@@ -46,15 +52,31 @@ OUT=/boot/diagnostico.txt
   echo "----- USB: dmesg filtrado (dwc3 / ep0 / phy / g_ether) -----"
   dmesg | grep -iE 'dwc3|ep0|usb2phy|g_ether|udc|drd' || echo "(nada relacionado)"
   echo
-  echo "----- ip addr (interfaces de rede) -----"
+  echo "----- ip addr / link (interfaces de rede) -----"
   ip addr
+  echo
+  ip -br link
+  echo
+  echo "----- USB: modulos de gadget carregados -----"
+  lsmod | grep -E 'g_ether|u_ether|usb_f_|libcomposite' || echo "(nenhum modulo de gadget carregado)"
+  echo
+  echo "----- USB: configfs de gadget -----"
+  ls -la /sys/kernel/config/usb_gadget/ 2>&1
   echo
   echo "----- systemctl status kodi -----"
   systemctl status kodi.service --no-pager -l
   echo
-  echo "----- journalctl -b -u kodi (ultimas 100 linhas) -----"
-  journalctl -b -u kodi -n 100 --no-pager
+  echo "----- systemctl status usb-gadget -----"
+  systemctl status usb-gadget.service --no-pager -l
   echo
+  echo "----- journalctl -b -u kodi -u usb-gadget (ultimas 150 linhas) -----"
+  journalctl -b -u kodi -u usb-gadget -n 150 --no-pager
+  echo
+  echo "----- /boot/kodi-start.log (saida do Kodi; motivo da saida) -----"
+  cat /boot/kodi-start.log 2>&1 || echo "(arquivo nao existe: o Kodi nao chegou a rodar?)"
+  echo
+  echo "----- /boot/weston-falhou.log (se o Weston morreu) -----"
+  cat /boot/weston-falhou.log 2>&1 || echo "(nao existe)"
   echo "----- /var/log/weston.log (procure Invalid transform) -----"
   cat /var/log/weston.log 2>&1 || echo "(arquivo não existe ainda)"
   echo
@@ -68,5 +90,11 @@ OUT=/boot/diagnostico.txt
   ls -la /dev/dri/ 2>&1
   echo
   echo "----- /root/.kodi/temp/kodi.log (log interno do Kodi) -----"
-  cat /root/.kodi/temp/kodi.log 2>&1 || echo "(arquivo não existe ainda)"
-} > "$OUT" 2>&1
+  tail -n 200 /root/.kodi/temp/kodi.log 2>&1 || echo "(arquivo não existe ainda)"
+  } >> "$OUT" 2>&1
+}
+
+sleep 15
+capture "15s"
+sleep 45
+capture "60s"

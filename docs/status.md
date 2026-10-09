@@ -71,8 +71,15 @@ aparelhos, trocando o `FDT` no `extlinux.conf`.
   - `extlinux.conf.x35s` — X35S/X35H (mesmo DTB).
   - `extlinux.conf.x35s-nosso` — nosso DTB compilado da X35S.
   - `extlinux.conf.x35s-peripheral` — DTB de teste com `dr_mode = "peripheral"` no USB.
+  - `extlinux.conf.x55-peripheral` — o mesmo, mas para o DTB ativo da **X55** (use este
+    para testar a ancoragem USB na X55).
   - Para usar qualquer uma: no PC, copie o conteúdo escolhido **por cima** de
     `extlinux.conf`.
+- **Logs de diagnóstico no cartão** (partição FAT, leitura no PC):
+  - `diagnostico.txt` — duas capturas (15s e 60s) com dmesg, entrada, USB, Kodi/Weston.
+  - `kodi-start.log` — **saída do Kodi** (o motivo de a tela ficar em loop).
+  - `usb-gadget.log` — o que o serviço de ancoragem USB tentou e o que achou de UDC.
+  - `weston.log`/`weston-falhou.log` — compositor.
 - **Diagnóstico:** `diagnostico.txt` na raiz da partição FAT, gravado pelo serviço
   `dump-diagnostico` cerca de 15 s depois do boot. Tire o cartão e leia no PC. O script
   vem de `variants/kodi/overlay/usr/local/bin/dump-diagnostico.sh` (o CI o instala com
@@ -88,13 +95,26 @@ aparelhos, trocando o `FDT` no `extlinux.conf`.
 | HDMI desabilitado resolve a tela preta | **confirmado** |
 | `rocknix-joypad` no X55 (17 botões / 4 eixos) + mapa Kodi | **confirmado** |
 | Weston com `drm-backend.so` + `kiosk-shell` | **confirmado** |
-| USB gadget funciona no X55 (`dr_mode` do SoC = `otg`) | **confirmado** |
-| Remover `dr_mode = "peripheral"` conserta o USB na X35H | **hipótese** (não testada) |
+| Kodi do Debian bookworm é 20.1 **com Wayland** (`BUILD_WAYLAND=yes`) | **confirmado (código)** |
+| X55: Kodi inicia e mostra a interface | **FALHA em aberto** (tela em loop) |
+| USB gadget (ancoragem) no X55 com `dr_mode = "otg"` | **FALHA em aberto** |
+| `dr_mode = "peripheral"` faz a ancoragem USB funcionar | **hipótese** (testar `*peripheral`) |
 | Sentido da rotação no X55 (`rotate-270` padrão; alternativo `rotate-90`) | **não validado** |
 | Contagem de botões/eixos na X35H | **não medido** |
 | Áudio (`asoc-simple-card: parse error`) e vídeo (`va_openDriver() returns -1`) | **aberto** |
 
 ## Testes a fazer (na ordem)
+
+### 0. Kodi não inicia no X55 (tela em loop) — prioridade máxima
+
+Objetivo: descobrir **por que** o Kodi (ou o Weston) sai, causando o loop de tela.
+
+1. Boot normal na X55 com o cabo USB ligado (para o `kodi-start.log` sair no cartão).
+2. Tire o cartão e leia, na raiz da FAT: **`kodi-start.log`**, `usb-gadget.log` e a
+   seção de Kodi/Weston do `diagnostico.txt` (que agora tem 2 capturas, 15s e 60s).
+3. Me mande esses arquivos. Com eles eu fecho o bloqueio:
+   - se `kodi-start.log` não existir, o problema é o **Weston** (veja `weston.log`);
+   - se existir e terminar com erro, a mensagem diz o motivo (Wayland, GL, DBus...).
 
 ### 1. USB gadget na X35H (prioridade)
 
@@ -108,6 +128,10 @@ Objetivo: ver se, sem forçar `peripheral`, o PC enxerga a `usb0`.
 4. **Se falhar:** no PC, na partição FAT, copie
    `extlinux/extlinux.conf.x35s-peripheral` por cima de `extlinux/extlinux.conf`
    (isso usa o DTB com `dr_mode = "peripheral"`), boote de novo e repita o passo 2.
+
+O mesmo teste na **X55** usa `extlinux/extlinux.conf.x55-peripheral` (o DTB ativo da
+X55 com USB forçado a `peripheral`). O `usb-gadget.log` no cartão mostra o que o
+serviço fez e se apareceu algum UDC.
 
 Hipótese em teste: a única diferença de USB entre a imagem que funciona (X55) e a que
 falhava era o `peripheral` que forçávamos. Se as duas opções falharem, a causa passa a

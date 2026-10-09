@@ -657,6 +657,39 @@ jobs:
           echo "!!! AVISO: DTB da X35S/X35H ausente (${X35S_DEFAULT}); só a X55 bootará." >&2
         fi
 
+        # Variante de teste do DTB DA X55 com dr_mode="peripheral" no USB
+        # (usb@fcc00000). É o caminho confiável quando a detecção de papel OTG
+        # não funciona: com "otg" o controlador pode nunca virar "device", então
+        # o g_ether não tem UDC para se ligar. Para usar: no PC (partição FAT),
+        # copie extlinux/extlinux.conf.x55-peripheral por cima de extlinux.conf.
+        X55_DTB_FILE="/mnt/boot/dtbs/rk3566-powkiddy-x55.dtb"
+        X55_PERIPH_FDT=""
+        if [ -f "$X55_DTB_FILE" ]; then
+          X55_PERIPH="/mnt/boot/dtbs/rk3566-powkiddy-x55-peripheral.dtb"
+          if dtc -I dtb -O dts -o /tmp/x55-periph.dts "$X55_DTB_FILE" 2>/dev/null; then
+            awk '
+              /usb@fcc00000[ \t]*\{/ { inblk=1; depth=1; found=0; print; next }
+              inblk {
+                n=gsub(/\{/,"{"); depth+=n
+                n=gsub(/\}/,"}"); depth-=n
+                if ($0 ~ /dr_mode = /) { sub(/dr_mode = "[a-zA-Z]*";/, "dr_mode = \"peripheral\";"); found=1 }
+                if (depth<=0 && !found) { print "\t\tdr_mode = \"peripheral\";" }
+                print
+                if (depth<=0) inblk=0
+                next
+              }
+              { print }
+            ' /tmp/x55-periph.dts > /tmp/x55-periph.dts.new
+            if dtc -I dts -O dtb -o "$X55_PERIPH" /tmp/x55-periph.dts.new 2>/dev/null; then
+              X55_PERIPH_FDT="/dtbs/$(basename "$X55_PERIPH")"
+              echo "--> Variante USB 'peripheral' do X55 criada: $X55_PERIPH"
+              dtc -I dtb -O dts "$X55_PERIPH" 2>/dev/null | grep -A5 'usb@fcc00000' || true
+            else
+              echo "!!! Falha ao gerar a variante 'peripheral' do X55."
+            fi
+          fi
+        fi
+
         echo "--> Gravando walkmam.conf (rotação da interface Kodi; editável no PC)..."
         cat << 'WALKMAMCONF' > /mnt/boot/walkmam.conf
         # Configuração editável do Walkmam. Lida no boot por start-kodi-wayland.sh.
@@ -703,6 +736,16 @@ jobs:
             APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw
         PERIPHBOOT
           echo "--> Alternativa de boot gravada: extlinux/extlinux.conf.x35s-peripheral"
+        fi
+
+        if [ -n "$X55_PERIPH_FDT" ]; then
+          cat << X55PERIPH > /mnt/boot/extlinux/extlinux.conf.x55-peripheral
+        LABEL Walkmam (Powkiddy X55 - USB peripheral, teste)
+            KERNEL /Image
+            FDT $X55_PERIPH_FDT
+            APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw walkmam_x55_gamepad=rocknix-v1
+        X55PERIPH
+          echo "--> Alternativa de boot gravada: extlinux/extlinux.conf.x55-peripheral"
         fi
 
         echo "--> Copiando rootfs..."

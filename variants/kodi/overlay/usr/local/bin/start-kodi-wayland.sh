@@ -10,6 +10,9 @@ export WAYLAND_DISPLAY=wayland-0
 KODI_BIN=${KODI_BIN:-/usr/bin/kodi}
 WESTON_LOG=${WESTON_LOG:-/var/log/weston.log}
 WALKMAM_CONF=${WALKMAM_CONF:-/boot/walkmam.conf}
+# Saída do Kodi, gravada na partição FAT (BOOT) para leitura no PC. Cai para
+# /var/log se /boot não estiver montado/gravável.
+KODI_LOG=${KODI_LOG:-/boot/kodi-start.log}
 
 # Rotação da saída DSI-1. Valores aceitos pelo Weston (man weston.ini):
 #   normal rotate-90 rotate-180 rotate-270
@@ -77,6 +80,8 @@ while [ ! -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]; do
         if [ -r "$WESTON_LOG" ]; then
             cat "$WESTON_LOG" >&2
         fi
+        # Persiste o log do Weston no cartão para leitura no PC.
+        [ -d "$(dirname "$KODI_LOG")" ] && cp "$WESTON_LOG" "$(dirname "$KODI_LOG")/weston-falhou.log" 2>/dev/null || true
         exit 1
     fi
     if [ "$attempt" -ge 30 ]; then
@@ -87,4 +92,21 @@ while [ ! -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]; do
     sleep 1
 done
 
-"$KODI_BIN" --standalone --windowing=wayland
+# A saída do Kodi fica no cartão (KODI_LOG); o motivo de ele sair é o que
+# precisamos para fechar o bloqueio "Kodi não inicia / tela em loop".
+KODI_LOG_DIR=$(dirname "$KODI_LOG")
+if [ ! -d "$KODI_LOG_DIR" ] || [ ! -w "$KODI_LOG_DIR" ]; then
+    KODI_LOG=/var/log/kodi-start.log
+fi
+echo "Kodi: $(date -Is) iniciando ($KODI_BIN --windowing=wayland); log em $KODI_LOG" >&2
+
+set +e
+"$KODI_BIN" --standalone --windowing=wayland >"$KODI_LOG" 2>&1
+kodi_status=$?
+set -e
+
+echo "Kodi terminou com status $kodi_status (log: $KODI_LOG)" >&2
+if [ -r "$KODI_LOG" ]; then
+    tail -n 100 "$KODI_LOG" >&2
+fi
+exit "$kodi_status"

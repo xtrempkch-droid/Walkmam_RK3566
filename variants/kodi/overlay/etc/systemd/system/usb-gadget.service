@@ -1,6 +1,6 @@
 [Unit]
 Description=USB Ethernet Gadget (g_ether) para SSH via cabo USB-C
-After=sys-kernel-config.mount
+After=sys-kernel-config.mount local-fs.target
 Before=ssh.service
 
 [Service]
