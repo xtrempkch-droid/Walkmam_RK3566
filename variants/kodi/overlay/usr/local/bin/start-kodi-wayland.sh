@@ -1,4 +1,10 @@
 #!/bin/sh
+# Sessão gráfica do Kodi no tty1.
+#
+# Tenta primeiro Weston (backend DRM, shell kiosk) + Kodi em Wayland, que é o
+# caminho que aplica a rotação (display_transform). Se o Weston não subir,
+# cai para GBM direto (sem compositor). O motivo de qualquer falha aparece NA
+# TELA (tty1) e no log /boot/kodi-start.log, para não depender de SSH.
 set -eu
 
 export HOME=/root
@@ -6,19 +12,18 @@ export HOME=/root
 export XDG_RUNTIME_DIR
 export WAYLAND_DISPLAY=wayland-0
 
-# Sobrescrevíveis para teste; em produção ficam nos padrões.
 KODI_BIN=${KODI_BIN:-/usr/bin/kodi}
 WESTON_LOG=${WESTON_LOG:-/var/log/weston.log}
 WALKMAM_CONF=${WALKMAM_CONF:-/boot/walkmam.conf}
-# Saída do Kodi, gravada na partição FAT (BOOT) para leitura no PC. Cai para
-# /var/log se /boot não estiver montado/gravável.
 KODI_LOG=${KODI_LOG:-/boot/kodi-start.log}
 
-# Rotação da saída DSI-1. Valores aceitos pelo Weston (man weston.ini):
-#   normal rotate-90 rotate-180 rotate-270
-#   flipped flipped-rotate-90 flipped-rotate-180 flipped-rotate-270
-# O valor vem de "display_transform=<valor>" em walkmam.conf, que fica na
-# partição FAT (BOOT) e pode ser editado no PC sem recompilar a imagem.
+say_tty() {
+    { printf '\033[2J\033[H'; printf '%s\n' "$*"; } > /dev/tty1 2>/dev/null || true
+    printf '%s\n' "$*" >&2
+}
+
+# Rotação da saída DSI-1 (valores do Weston). Vem de "display_transform=<valor>"
+# em walkmam.conf, na partição FAT (BOOT), editável no PC sem recompilar.
 read_transform() {
     value=
     if [ -r "$WALKMAM_CONF" ]; then
@@ -30,25 +35,38 @@ read_transform() {
         flipped|flipped-rotate-90|flipped-rotate-180|flipped-rotate-270)
             printf '%s\n' "$value"
             ;;
-        "")
-            printf 'normal\n'
-            ;;
         *)
-            echo "display_transform inválido em $WALKMAM_CONF: '$value'. Usando 'normal'." >&2
             printf 'normal\n'
             ;;
     esac
 }
 
 TRANSFORM=$(read_transform)
-echo "Weston: DSI-1 transform=$TRANSFORM (fonte: $WALKMAM_CONF)" >&2
 
-mkdir -p "$XDG_RUNTIME_DIR"
-chmod 0700 "$XDG_RUNTIME_DIR"
-rm -f "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY.lock"
+KODI_LOG_DIR=$(dirname "$KODI_LOG")
+if [ ! -d "$KODI_LOG_DIR" ] || [ ! -w "$KODI_LOG_DIR" ]; then
+    KODI_LOG=/var/log/kodi-start.log
+fi
 
-WESTON_INI="$XDG_RUNTIME_DIR/weston.ini"
-cat > "$WESTON_INI" << EOF_INI
+echo "===== $(date -Is) start-kodi-wayland (transform=$TRANSFORM) =====" >> "$KODI_LOG"
+
+weston_pid=
+stop_weston() {
+    if [ -n "$weston_pid" ]; then
+        kill "$weston_pid" 2>/dev/null || true
+        wait "$weston_pid" 2>/dev/null || true
+        weston_pid=
+    fi
+}
+trap 'stop_weston' EXIT INT TERM
+
+start_weston() {
+    mkdir -p "$XDG_RUNTIME_DIR"
+    chmod 0700 "$XDG_RUNTIME_DIR"
+    rm -f "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY.lock"
+
+    WESTON_INI="$XDG_RUNTIME_DIR/weston.ini"
+    cat > "$WESTON_INI" << EOF_INI
 [core]
 shell=kiosk-shell.so
 idle-time=0
@@ -58,55 +76,60 @@ name=DSI-1
 transform=$TRANSFORM
 EOF_INI
 
-weston --backend=drm-backend.so --tty=1 --idle-time=0 \
-    --config="$WESTON_INI" --log="$WESTON_LOG" &
-weston_pid=$!
+    weston --backend=drm-backend.so --tty=1 --idle-time=0 \
+        --config="$WESTON_INI" --log="$WESTON_LOG" >> "$KODI_LOG" 2>&1 &
+    weston_pid=$!
 
-cleanup() {
-    kill "$weston_pid" 2>/dev/null || true
-    wait "$weston_pid" 2>/dev/null || true
-}
-trap cleanup EXIT INT TERM
-
-attempt=0
-while [ ! -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]; do
-    if ! kill -0 "$weston_pid" 2>/dev/null; then
-        set +e
-        wait "$weston_pid"
-        weston_status=$?
-        set -e
-        echo "Weston exited before creating its Wayland socket." >&2
-        echo "Weston exit status: $weston_status" >&2
-        if [ -r "$WESTON_LOG" ]; then
-            cat "$WESTON_LOG" >&2
+    attempt=0
+    while [ ! -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]; do
+        if ! kill -0 "$weston_pid" 2>/dev/null; then
+            echo "Weston saiu antes de criar o socket Wayland." >> "$KODI_LOG"
+            [ -r "$WESTON_LOG" ] && cat "$WESTON_LOG" >> "$KODI_LOG" 2>/dev/null || true
+            weston_pid=
+            return 1
         fi
-        # Persiste o log do Weston no cartão para leitura no PC.
-        [ -d "$(dirname "$KODI_LOG")" ] && cp "$WESTON_LOG" "$(dirname "$KODI_LOG")/weston-falhou.log" 2>/dev/null || true
-        exit 1
-    fi
-    if [ "$attempt" -ge 30 ]; then
-        echo "Timed out waiting for Weston's Wayland socket." >&2
-        exit 1
-    fi
-    attempt=$((attempt + 1))
-    sleep 1
-done
+        if [ "$attempt" -ge 30 ]; then
+            echo "Timeout esperando o socket do Weston." >> "$KODI_LOG"
+            stop_weston
+            return 1
+        fi
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    return 0
+}
 
-# A saída do Kodi fica no cartão (KODI_LOG); o motivo de ele sair é o que
-# precisamos para fechar o bloqueio "Kodi não inicia / tela em loop".
-KODI_LOG_DIR=$(dirname "$KODI_LOG")
-if [ ! -d "$KODI_LOG_DIR" ] || [ ! -w "$KODI_LOG_DIR" ]; then
-    KODI_LOG=/var/log/kodi-start.log
+ok=0
+
+# Tentativa 1: Weston (Wayland).
+if start_weston; then
+    echo "Weston pronto; iniciando Kodi --windowing=wayland" >> "$KODI_LOG"
+    set +e
+    "$KODI_BIN" --standalone --windowing=wayland >> "$KODI_LOG" 2>&1
+    kodi_status=$?
+    set -e
+    echo "Kodi (wayland) terminou com status $kodi_status" >> "$KODI_LOG"
+    [ "$kodi_status" -eq 0 ] && ok=1
+else
+    say_tty "KODI: Weston falhou. Veja /boot/kodi-start.log. Tentando GBM direto..."
 fi
-echo "Kodi: $(date -Is) iniciando ($KODI_BIN --windowing=wayland); log em $KODI_LOG" >&2
+stop_weston
 
-set +e
-"$KODI_BIN" --standalone --windowing=wayland >"$KODI_LOG" 2>&1
-kodi_status=$?
-set -e
-
-echo "Kodi terminou com status $kodi_status (log: $KODI_LOG)" >&2
-if [ -r "$KODI_LOG" ]; then
-    tail -n 100 "$KODI_LOG" >&2
+# Tentativa 2: GBM direto (sem compositor). O painel já traz rotation=270 no
+# device tree, então o Kodi deve abrir sem transform do Weston.
+if [ "$ok" -eq 0 ]; then
+    say_tty "KODI: tentando --windowing=gbm (sem Weston)..."
+    set +e
+    "$KODI_BIN" --standalone --windowing=gbm >> "$KODI_LOG" 2>&1
+    kodi_status=$?
+    set -e
+    echo "Kodi (gbm) terminou com status $kodi_status" >> "$KODI_LOG"
+    [ "$kodi_status" -eq 0 ] && ok=1
 fi
-exit "$kodi_status"
+
+if [ "$ok" -eq 0 ]; then
+    say_tty "KODI NAO ABRIU (veja /boot/kodi-start.log)"
+    exit 1
+fi
+
+exit 0

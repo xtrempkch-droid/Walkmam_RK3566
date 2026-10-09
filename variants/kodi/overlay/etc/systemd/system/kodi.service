@@ -1,10 +1,9 @@
 [Unit]
 Description=Kodi Media Center (Weston/Wayland)
-StartLimitIntervalSec=60
-StartLimitBurst=5
 After=systemd-user-sessions.service systemd-udev-settle.service sound.target
 Conflicts=getty@tty1.service
-After=getty@tty1.service
+StartLimitIntervalSec=300
+StartLimitBurst=3
 
 [Service]
 User=root
@@ -14,8 +13,10 @@ TTYPath=/dev/tty1
 StandardInput=tty
 StandardOutput=journal
 ExecStart=/usr/local/bin/start-kodi-wayland.sh
-Restart=always
-RestartSec=5
+# on-failure com RestartSec alto: em falha, tenta poucas vezes e para, deixando
+# o motivo visível na tela (evita o loop rápido que apagava a mensagem).
+Restart=on-failure
+RestartSec=15
 
 [Install]
 WantedBy=multi-user.target

@@ -85,8 +85,11 @@ aparelhos, trocando o `FDT` no `extlinux.conf`.
   `dump-diagnostico` cerca de 15 s depois do boot. Tire o cartão e leia no PC. O script
   vem de `variants/kodi/overlay/usr/local/bin/dump-diagnostico.sh` (o CI o instala com
   `install`; não há mais cópia inline no `build.yml`).
-- **Acesso:** a senha do `root` é `root` e o SSH está habilitado (ver "Segurança" no
-  `docs/roadmap.md`).
+- **Acesso:** a senha do `root` é `root` e o SSH está habilitado. A imagem instala
+  `/etc/ssh/sshd_config.d/10-walkmam.conf` com `PermitRootLogin yes` +
+  `PasswordAuthentication yes` (o Debian 12 bloqueia login do root por senha por
+  padrão — sem esse drop-in, `root:root` é recusado). Pelo cabo USB o aparelho fica
+  em **10.55.0.1**. Ver "Segurança" no `docs/roadmap.md`.
 
 ## Confirmado x hipótese
 

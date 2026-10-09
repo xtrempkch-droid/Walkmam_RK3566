@@ -438,6 +438,17 @@ jobs:
           echo "rk3566-x55" > /etc/hostname
         '
 
+        echo "--> Liberando login do root por senha no SSH."
+        echo "--> (O Debian 12 vem com 'PermitRootLogin prohibit-password': sem isto,"
+        echo "--> o login do root por senha é recusado mesmo com a senha certa.)"
+        sudo mkdir -p rootfs/etc/ssh/sshd_config.d
+        sudo bash -c 'cat << "EOF" > rootfs/etc/ssh/sshd_config.d/10-walkmam.conf
+        # Login do root por senha, para depuração via cabo USB (g_ether).
+        PermitRootLogin yes
+        PasswordAuthentication yes
+        EOF'
+        sudo chmod 0644 rootfs/etc/ssh/sshd_config.d/10-walkmam.conf
+
         echo "--> Habilitando login automático no console serial (ttyS2)..."
         sudo mkdir -p rootfs/etc/systemd/system/serial-getty@ttyS2.service.d
         sudo bash -c 'cat << "EOF" > rootfs/etc/systemd/system/serial-getty@ttyS2.service.d/autologin.conf

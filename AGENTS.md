@@ -90,6 +90,18 @@ Run workflow (ou um push no `main`). Gera o artifact
 **Local (U-Boot + kernel + DTB, sem root):** possível, com toolchain extra. O CI é o
 caminho oficial; o rootfs Debian e a montagem da imagem exigem `sudo`.
 
+## 5.1 Acesso ao aparelho (para depurar)
+
+- Console **serial** (`ttyS2`, 1500000n8) e **tty1** com autologin do `root`.
+- **SSH pela rede USB** (`g_ether`): o aparelho fica em **10.55.0.1** (o PC usa
+  `10.55.0.2/24`), usuário `root`, senha `root`.
+  - Se o login por senha for **recusado**, quase sempre é o `ssh_config` do Debian:
+    o padrão é `PermitRootLogin prohibit-password`. A imagem instala
+    `/etc/ssh/sshd_config.d/10-walkmam.conf` com `PermitRootLogin yes` e
+    `PasswordAuthentication yes`.
+- **Logs no cartão** (partição FAT, leitura no PC): `diagnostico.txt`,
+  `kodi-start.log`, `usb-gadget.log`, `weston.log`.
+
 ## 6. Regras e armadilhas (leia antes de editar)
 
 1. **Não inferir GPIO/pinagem.** Nunca invente valores de hardware; use fonte
