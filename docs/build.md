@@ -2,7 +2,7 @@
 
 ## Fluxo completo
 
-O workflow em `.github/workflows/build.yml` continua responsável por baixar as fontes, compilar U-Boot/kernel, montar o rootfs Debian e produzir a imagem de referência X35S. Ele prioriza o DTB oficial obtido da ROCKNIX e usa o DTB compilado como fallback. Se nenhum dos dois estiver presente, o job falha explicitamente em vez de criar uma imagem com uma referência FDT ausente. Por compatibilidade, o nome histórico do artifact continua identificando X55, embora o FDT ativo da imagem seja selecionado para X35S; isso não declara validação em hardware.
+O workflow em `.github/workflows/build.yml` continua responsável por baixar as fontes, compilar U-Boot/kernel, montar o rootfs Debian e produzir **uma imagem única para os três aparelhos** (X55, X35S e X35H; X35S e X35H compartilham o mesmo DTB). O boot ativo usa o **DTB da X55** (aparelho em teste). O DTB da X35S/X35H — oficial obtido da ROCKNIX quando disponível, senão o compilado — fica em `extlinux/extlinux.conf.x35s`. Se o DTB ativo (X55) não existir, o job falha explicitamente em vez de criar uma imagem com FDT ausente; a ausência do DTB da X35S/X35H apenas avisa. Isso não declara validação em hardware.
 
 ## X55: diagnóstico de tela preta
 
@@ -59,8 +59,8 @@ e foi retirado. O terminal permanece sob a orientação existente do framebuffer
 Como isso adiciona uma etapa de composição, a orientação e a reprodução de vídeo
 acelerada precisam ser confirmadas no aparelho antes de considerar a rotação
 concluída. O sentido correto no X55 (`rotate-90` ou `rotate-270`) ainda não foi
-validado; `build/create-image.sh` grava `rotate-270` para o X55 como ponto de
-partida (e `normal` para X35S/X35H).
+validado; a imagem grava `rotate-270` para o X55 (`display_transform` em
+`devices/powkiddy-x55/device.conf`, no `create-image.sh`) e `normal` para X35S/X35H.
 
 O primeiro diagnóstico da v6 mostra `kodi.service` encerrando com status 1
 antes da criação de `kodi.log`; portanto, não confirma que o Kodi chegou a

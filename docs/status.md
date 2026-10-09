@@ -51,15 +51,18 @@ aparelhos, trocando o `FDT` no `extlinux.conf`.
 
 - **Boot:** `idbloader.img` no setor 64 e `u-boot.itb` no setor 16384; boot por
   `extlinux/extlinux.conf` na partição FAT `BOOT`; rootfs ext4 com rótulo `ROOTFS`.
-- **FDT padrão (X35S/X35H):** `dtbs/rk3566-powkiddy-x35s-rocknix.dtb` (DTB oficial da
-  ROCKNIX, com o nó HDMI desabilitado). Se o oficial não for obtido, usa
-  `dtbs/rk3566-powkiddy-x35s-nosso.dtb`.
-- **`walkmam.conf`** na raiz da partição FAT, com `display_transform=normal`.
+- **FDT ativo:** `dtbs/rk3566-powkiddy-x55.dtb` (DTB da X55) — a imagem sai pronta para
+  a X55, aparelho em teste. O DTB da X35S/X35H vai em `extlinux.conf.x35s`
+  (`dtbs/rk3566-powkiddy-x35s-rocknix.dtb`, oficial da ROCKNIX com HDMI desabilitado, ou
+  `dtbs/rk3566-powkiddy-x35s-nosso.dtb`, o nosso compilado). Se o DTB da X55 não for
+  gerado, o step falha em vez de criar uma imagem com o FDT ausente.
+- **`walkmam.conf`** na raiz da partição FAT, com `display_transform=rotate-270` (X55).
+  Para X35S/X35H, troque para `normal`.
 - **Entradas de boot alternativas** (presentes, mas não ativas) na pasta `extlinux/` da
   partição FAT:
-  - `extlinux.conf` — a que está valendo (X35S/X35H).
-  - `extlinux.conf.x55` — para bootar a X55.
-  - `extlinux.conf.x35s-nosso` — nosso DTB compilado.
+  - `extlinux.conf` — a que está valendo (X55).
+  - `extlinux.conf.x35s` — X35S/X35H (mesmo DTB).
+  - `extlinux.conf.x35s-nosso` — nosso DTB compilado da X35S.
   - `extlinux.conf.x35s-peripheral` — DTB de teste com `dr_mode = "peripheral"` no USB.
   - Para usar qualquer uma: no PC, copie o conteúdo escolhido **por cima** de
     `extlinux.conf`.
@@ -80,7 +83,7 @@ aparelhos, trocando o `FDT` no `extlinux.conf`.
 | Weston com `drm-backend.so` + `kiosk-shell` | **confirmado** |
 | USB gadget funciona no X55 (`dr_mode` do SoC = `otg`) | **confirmado** |
 | Remover `dr_mode = "peripheral"` conserta o USB na X35H | **hipótese** (não testada) |
-| Sentido da rotação no X55: `rotate-90` ou `rotate-270` | **não validado** |
+| Sentido da rotação no X55 (`rotate-270` padrão; alternativo `rotate-90`) | **não validado** |
 | Contagem de botões/eixos na X35H | **não medido** |
 | Áudio (`asoc-simple-card: parse error`) e vídeo (`va_openDriver() returns -1`) | **aberto** |
 
@@ -110,11 +113,11 @@ do `diagnostico.txt`, que traz o `dr_mode` do device tree em uso.
 
 ### 2. Rotação da tela no X55
 
-1. Boote a X55 usando `extlinux.conf.x55` (copie por cima de `extlinux.conf`).
-2. Na partição FAT, edite `walkmam.conf` e troque para `display_transform=rotate-270`.
-   (A imagem do CI grava `normal`; para a X55 é preciso editar à mão.)
-3. Se a imagem ficar de cabeça para baixo, teste `display_transform=rotate-90`.
-4. Me diga **qual valor deixa a interface correta** e, se possível, mande o trecho do
+1. Não precisa copiar `extlinux.conf`: a imagem já sai com o DTB da X55 **e** a rotação
+   da X55 (`display_transform=rotate-270`) ativos.
+2. Se a interface ficar de cabeça para baixo, edite `walkmam.conf` na partição FAT e
+   troque para `display_transform=rotate-90`.
+3. Me diga **qual valor deixa a interface correta** e, se possível, mande o trecho do
    `weston.log` (ele está no `diagnostico.txt`) — nele aparece se houve
    `Invalid transform`.
 
@@ -150,11 +153,12 @@ compilação; o `diagnostico.txt` mostra o que aconteceu no aparelho.
    `dr_mode`). **Não refiz o build só por isso**, para não trocar o artefato que você vai
    baixar; se mexer nisso, gere um run novo e use o artefato do run mais recente.
 2. O `build.yml` ainda monta a imagem **inline** (não usa o `build/create-image.sh`).
-   Consequência prática: a imagem do CI grava `walkmam.conf` com `display_transform=normal`
-   fixo, então o **X55 não recebe `rotate-270` automaticamente** (tem que editar à mão).
-   Fazer o CI usar o `create-image.sh` resolve isso e remove a duplicação.
-3. Mover o padrão de rotação do `case` do `create-image.sh` para `display_transform=` em
-   `devices/<placa>/device.conf`.
+   Duplicação pendente; a rotação já não depende disso (o CI grava `rotate-270` para a
+   X55, e o `create-image.sh` lê `display_transform` de `device.conf`).
+3. ~~Mover o padrão de rotação do `case` do `create-image.sh` para `display_transform=`
+   em `devices/<placa>/device.conf`.~~ **Feito:** `devices/*/device.conf` tem
+   `display_transform`, o `build.sh` repassa como 9º argumento e o `create-image.sh` usa
+   esse valor (o `case` fica só como fallback).
 
 ## Onde ficam as coisas no repositório
 

@@ -643,21 +643,37 @@ jobs:
           fi
         fi
 
+        # O boot lê este extlinux.conf; se o FDT apontar para um arquivo que não
+        # existe, o aparelho acende o LED e fica sem imagem. Falha rápido se o
+        # device tree ativo (o da X55, aparelho em teste) não tiver sido gerado.
+        if [ ! -f /mnt/boot/dtbs/rk3566-powkiddy-x55.dtb ]; then
+          echo "!!! FDT ativo ausente: dtbs/rk3566-powkiddy-x55.dtb." >&2
+          echo "!!! Sem o device tree da X55 o aparelho não tem imagem (LED aceso, tela preta)." >&2
+          exit 1
+        fi
+        # X35S/X35H compartilham o mesmo DTB; sem ele a imagem ainda serve a X55,
+        # mas a entrada alternativa da X35S/X35H ficaria quebrada — apenas avisa.
+        if [ ! -f "/mnt/boot/${X35S_DEFAULT}" ]; then
+          echo "!!! AVISO: DTB da X35S/X35H ausente (${X35S_DEFAULT}); só a X55 bootará." >&2
+        fi
+
         echo "--> Gravando walkmam.conf (rotação da interface Kodi; editável no PC)..."
         cat << 'WALKMAMCONF' > /mnt/boot/walkmam.conf
         # Configuração editável do Walkmam. Lida no boot por start-kodi-wayland.sh.
         # display_transform: normal | rotate-90 | rotate-180 | rotate-270 |
         #                    flipped | flipped-rotate-90 | flipped-rotate-180 | flipped-rotate-270
-        display_transform=normal
+        # X55 (painel 720x1280 montado deitado): rotate-270.
+        # X35S/X35H (painel 640x480): normal.
+        display_transform=rotate-270
         WALKMAMCONF
 
-        echo "--> Criando extlinux.conf (padrão: X35H/X35S — troque a linha FDT p/ X55)..."
+        echo "--> Criando extlinux.conf ativo para a Powkiddy X55 (aparelho em teste)..."
         mkdir -p /mnt/boot/extlinux
-        cat << BOOTCFG > /mnt/boot/extlinux/extlinux.conf
-        LABEL Mainline (Powkiddy X35H / X35S)
+        cat << "BOOTCFG" > /mnt/boot/extlinux/extlinux.conf
+        LABEL Walkmam (Powkiddy X55 - Kodi)
             KERNEL /Image
-            FDT /${X35S_DEFAULT}
-            APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw
+            FDT /dtbs/rk3566-powkiddy-x55.dtb
+            APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw walkmam_x55_gamepad=rocknix-v1
         BOOTCFG
 
         # Referência: variante usando o nosso próprio .dtb compilado, caso o
@@ -669,15 +685,15 @@ jobs:
             APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw
         BOOTCFG3
 
-        # Referência p/ X55: mesma imagem, só troca o FDT. Salvamos como
-        # arquivo à parte (não ativo) — é só copiar o conteúdo por cima do
-        # extlinux.conf se o aparelho for a X55.
-        cat << "BOOTCFG2" > /mnt/boot/extlinux/extlinux.conf.x55
-        LABEL Mainline (Powkiddy X55)
+        # Mesma imagem serve para X35S/X35H (mesmo DTB): no PC (partição FAT),
+        # copie o conteúdo deste arquivo por cima de extlinux.conf e ajuste
+        # display_transform=normal em walkmam.conf.
+        cat << X35SBOOT > /mnt/boot/extlinux/extlinux.conf.x35s
+        LABEL Walkmam (Powkiddy X35S / X35H)
             KERNEL /Image
-            FDT /dtbs/rk3566-powkiddy-x55.dtb
+            FDT /${X35S_DEFAULT}
             APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw
-        BOOTCFG2
+        X35SBOOT
 
         if [ -n "$PERIPH_FDT" ]; then
           cat << PERIPHBOOT > /mnt/boot/extlinux/extlinux.conf.x35s-peripheral

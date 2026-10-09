@@ -36,7 +36,7 @@ docs/                     build, arquitetura e porting
 | `powkiddy-x35s` | Powkiddy X35S | DTS/DTB de referência ROCKNIX; em investigação |
 | `powkiddy-x35h` | Powkiddy X35H | Sem DTS/DTB independente validado |
 
-A variante atualmente configurada é `kodi` (Debian Bookworm + Weston/Wayland). O teste no Powkiddy X55 revelou tela preta com erros no caminho DSI/VOP; o workflow desabilita HDMI como workaround experimental, conforme `docs/build.md`. Valores de pinagem, GPIO e display não são inferidos; consulte `docs/porting.md` antes de adicionar hardware.
+A variante atualmente configurada é `kodi` (Debian Bookworm + Weston/Wayland). Uma única imagem atende os três aparelhos: o device tree e a rotação mudam por arquivo no cartão (`extlinux/extlinux.conf.*` e `walkmam.conf`), sem recompilar. O teste no Powkiddy X55 revelou tela preta com erros no caminho DSI/VOP; o workflow desabilita HDMI como workaround experimental, conforme `docs/build.md`. Valores de pinagem, GPIO e display não são inferidos; consulte `docs/porting.md` antes de adicionar hardware.
 
 `variants/own/` permanece como scaffold planejado: não contém pacotes nem overlay instalável e o empacotador recusa essa variante até que seja implementada.
 
@@ -48,9 +48,9 @@ Depois de preparar os artefatos de U-Boot, kernel e rootfs, execute:
 build/build.sh powkiddy-x55 kodi
 ```
 
-Por padrão, o script procura `uboot/`, `kernel/` e `rootfs/` na raiz do repositório e grava a imagem compactada em `output/`. Os caminhos podem ser definidos por `WALKMAN_UBOOT_DIR`, `WALKMAN_KERNEL_DIR`, `WALKMAN_ROOTFS_DIR` e `WALKMAN_OUTPUT_DIR`; caminhos relativos também são resolvidos a partir da raiz do repositório. `WALKMAN_DTB_SOURCE` pode apontar para um DTB de referência já obtido; sem isso, usa o DTB compilado no diretório do kernel. O script não baixa fontes nem monta o rootfs: no momento, o workflow do GitHub Actions é o fluxo completo de build.
+Por padrão, o script procura `uboot/`, `kernel/` e `rootfs/` na raiz do repositório e grava a imagem compactada em `output/`. Os caminhos podem ser definidos por `WALKMAN_UBOOT_DIR`, `WALKMAN_KERNEL_DIR`, `WALKMAN_ROOTFS_DIR` e `WALKMAN_OUTPUT_DIR`; caminhos relativos também são resolvidos a partir da raiz do repositório. `WALKMAN_DTB_SOURCE` pode apontar para um DTB de referência já obtido; sem isso, usa o DTB compilado no diretório do kernel. A rotação da interface vem de `display_transform` no `device.conf` (X55 `rotate-270`, X35S/X35H `normal`) e é gravada em `walkmam.conf` na partição de boot. O script não baixa fontes nem monta o rootfs: no momento, o workflow do GitHub Actions é o fluxo completo de build.
 
-Para executar o build completo, use **Actions → Build Mainline RK3566 (Powkiddy X55) OS → Run workflow**. O workflow produz a imagem de referência com DTB X35S (oficial da ROCKNIX, ou o compilado como fallback), mantendo o nome histórico do artifact `rk3566-x55-mainline-sdcard-image` por compatibilidade. A imagem não representa validação em hardware nem suporte específico à X35H.
+Para executar o build completo, use **Actions → Build Mainline RK3566 (Powkiddy X55) OS → Run workflow**. Uma única imagem atende os três aparelhos (X55, X35S e X35H — X35S e X35H compartilham o mesmo DTB): o boot ativo sai com o **DTB da X55**; para X35S/X35H, copie `extlinux/extlinux.conf.x35s` por cima de `extlinux.conf` e ajuste `display_transform=normal` em `walkmam.conf`. O artifact mantém o nome histórico `rk3566-x55-mainline-sdcard-image` por compatibilidade, e a imagem não representa validação em hardware.
 
 ## Documentação
 

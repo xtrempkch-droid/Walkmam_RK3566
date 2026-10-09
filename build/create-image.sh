@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -ne 8 ]]; then
-    echo "Usage: $0 <image-file> <uboot-dir> <kernel-dir> <rootfs-dir> <device> <variant> <dtb-file> <dtb-name>" >&2
+if [[ $# -ne 8 && $# -ne 9 ]]; then
+    echo "Usage: $0 <image-file> <uboot-dir> <kernel-dir> <rootfs-dir> <device> <variant> <dtb-file> <dtb-name> [display-transform]" >&2
     exit 2
 fi
 
@@ -14,6 +14,9 @@ DEVICE=$5
 VARIANT=$6
 DTB_FILE=$7
 DTB_NAME=$8
+# Opcional: rotação vinda de devices/<device>/device.conf (display_transform).
+# Se vier vazia, o valor é decidido pelo 'case $DEVICE' mais abaixo.
+DISPLAY_TRANSFORM=${9:-}
 IMAGE_SIZE_MB=4096
 BOOT_MOUNT=
 ROOT_MOUNT=
@@ -38,6 +41,10 @@ if [[ ! -d $ROOTFS_DIR ]]; then
 fi
 if [[ ! $DTB_NAME =~ ^[a-zA-Z0-9._-]+\.dtb$ ]]; then
     echo "Invalid DTB destination filename: $DTB_NAME" >&2
+    exit 2
+fi
+if [[ -n $DISPLAY_TRANSFORM && ! $DISPLAY_TRANSFORM =~ ^(normal|rotate-90|rotate-180|rotate-270|flipped|flipped-rotate-90|flipped-rotate-180|flipped-rotate-270)$ ]]; then
+    echo "Invalid display transform: $DISPLAY_TRANSFORM" >&2
     exit 2
 fi
 if [[ -e $IMAGE_FILE || -e $IMAGE_FILE.gz ]]; then
@@ -139,20 +146,24 @@ cp "$DTB_FILE" "$BOOT_MOUNT/dtbs/$DTB_NAME"
 # valor sem recompilar. Valores válidos do Weston: normal, rotate-90,
 # rotate-180, rotate-270, flipped, flipped-rotate-90, flipped-rotate-180,
 # flipped-rotate-270 (não existe "270" sozinho).
-case $DEVICE in
-    powkiddy-x55)
-        # Painel 720x1280 (retrato) em aparelho horizontal. Sentido NÃO validado
-        # no hardware: se a imagem sair de cabeça para baixo, troque por rotate-90.
-        DISPLAY_TRANSFORM=rotate-270
-        ;;
-    powkiddy-x35s|powkiddy-x35h)
-        # Painel 640x480 com rotation = <0> no DTS; mesmo DTB nos dois.
-        DISPLAY_TRANSFORM=normal
-        ;;
-    *)
-        DISPLAY_TRANSFORM=normal
-        ;;
-esac
+# Fallback por nome do aparelho, usado só quando device.conf não define
+# display_transform (ou quando o create-image.sh é chamado direto).
+if [[ -z $DISPLAY_TRANSFORM ]]; then
+    case $DEVICE in
+        powkiddy-x55)
+            # Painel 720x1280 (retrato) em aparelho horizontal. Sentido NÃO validado
+            # no hardware: se a imagem sair de cabeça para baixo, troque por rotate-90.
+            DISPLAY_TRANSFORM=rotate-270
+            ;;
+        powkiddy-x35s|powkiddy-x35h)
+            # Painel 640x480 com rotation = <0> no DTS; mesmo DTB nos dois.
+            DISPLAY_TRANSFORM=normal
+            ;;
+        *)
+            DISPLAY_TRANSFORM=normal
+            ;;
+    esac
+fi
 cat > "$BOOT_MOUNT/walkmam.conf" << CONF
 # Configuração editável do Walkmam. Lida no boot por start-kodi-wayland.sh.
 # display_transform: normal | rotate-90 | rotate-180 | rotate-270 |

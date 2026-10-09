@@ -36,6 +36,23 @@ read_config_value() {
     sed -n "s/^${key}=//p" "$file"
 }
 
+read_optional_config_value() {
+    local key=$1
+    local file=$2
+    local default=$3
+    local count
+    count=$(grep -c "^${key}=" "$file" || true)
+    if [[ $count -eq 0 ]]; then
+        printf '%s\n' "$default"
+        return 0
+    fi
+    if [[ $count -ne 1 ]]; then
+        echo "Expected at most one '$key' entry in $file." >&2
+        return 1
+    fi
+    sed -n "s/^${key}=//p" "$file"
+}
+
 resolve_repo_path() {
     local raw_path=$1
     local label=$2
@@ -70,6 +87,7 @@ CONFIG_VARIANT=$(read_config_value id "$VARIANT_CONFIG")
 VARIANT_STATUS=$(read_config_value status "$VARIANT_CONFIG")
 PACKAGE_MANIFEST=$(read_config_value packages "$VARIANT_CONFIG")
 DTB_NAME=$(read_config_value image_dtb "$DEVICE_CONFIG")
+DISPLAY_TRANSFORM=$(read_optional_config_value display_transform "$DEVICE_CONFIG" "")
 if [[ $CONFIG_DEVICE != "$DEVICE" || $CONFIG_VARIANT != "$VARIANT" ]]; then
     echo "Configuration identifiers must match their directory names." >&2
     exit 2
@@ -84,6 +102,10 @@ if [[ -z $DTB_NAME ]]; then
 fi
 if [[ ! $DTB_NAME =~ ^[a-zA-Z0-9._-]+\.dtb$ ]]; then
     echo "Invalid image_dtb value in $DEVICE_CONFIG." >&2
+    exit 2
+fi
+if [[ -n $DISPLAY_TRANSFORM && ! $DISPLAY_TRANSFORM =~ ^(normal|rotate-90|rotate-180|rotate-270|flipped|flipped-rotate-90|flipped-rotate-180|flipped-rotate-270)$ ]]; then
+    echo "Invalid display_transform value in $DEVICE_CONFIG: $DISPLAY_TRANSFORM" >&2
     exit 2
 fi
 if [[ ! $PACKAGE_MANIFEST =~ ^[a-zA-Z0-9._/-]+$ || $PACKAGE_MANIFEST == /* || $PACKAGE_MANIFEST == *..* ]]; then
@@ -131,4 +153,4 @@ fi
 
 "$ROOT_DIR/build/create-image.sh" \
     "$IMAGE_PATH" "$UBOOT_DIR" "$KERNEL_DIR" "$ROOTFS_DIR" \
-    "$DEVICE" "$VARIANT" "$DTB_SOURCE" "$DTB_NAME"
+    "$DEVICE" "$VARIANT" "$DTB_SOURCE" "$DTB_NAME" "$DISPLAY_TRANSFORM"
