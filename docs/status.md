@@ -7,9 +7,10 @@ está pronto, o que ainda é **hipótese** e exatamente o que testar e devolver.
 
 1. A imagem já está **pronta e publicada**: pegue o artifact
    `rk3566-x55-mainline-sdcard-image` do **run verde (success) mais recente** em
-   Actions — hoje o **#87**. Ele já traz o boot ativo da X55 e
-   `display_transform=rotate-270`. **Não** use runs com `failure` (o #82 e o #83
-   falharam por um bug de aspas no `build.yml`, já corrigido).
+   Actions — hoje o **#88**. Ele já traz o boot ativo da X55,
+   `display_transform=rotate-270` e os logs de diagnóstico do Kodi/USB.
+   **Não** use runs com `failure` (o #82 e o #83 falharam por um bug de aspas no
+   `build.yml`, já corrigido).
 2. Grave no cartão e faça os testes da seção **"Testes a fazer"**.
 3. Me mande o **`diagnostico.txt`** de cada boot que interessar (e o trecho do
    `weston.log` / `dmesg` quando o teste for de rotação / áudio / vídeo).
@@ -20,17 +21,17 @@ está pronto, o que ainda é **hipótese** e exatamente o que testar e devolver.
 
 | Run | Commit | Resultado | Observação |
 | --- | --- | --- | --- |
-| #87 | `e430e61` (fix X55) | **success** | boot ativo da X55 + `rotate-270`; **use este artefato** |
+| #88 | `84b38ea` (diagnóstico) | **success** | Kodi/USB diagnosticáveis + variante `x55-peripheral`; **use este** |
+| #87 | `e430e61` (fix X55) | **success** | boot ativo da X55 + `rotate-270` |
 | #84 | `836f3b5` (fix) | **success** | imagem antiga (bootava com DTB da X35S) |
 | #83 | `664b057` (docs) | failure | mesmo bug de aspas do #82; ignorar |
 | #82 | `68c5c77` (merge USB) | failure | bug de aspas no `build.yml` |
 | #81 | `42e66b7` (merge rotação) | success | — |
 
-> **#87 é o run que deve ser usado no X55.** Ele corrige a regressão em que o
-> `extlinux.conf` ativo apontava para o DTB da X35S: num X55 isso inicializa outro
-> painel (driver/dimensão errados) e a tela fica preta. Agora o boot ativo usa o DTB
-> da X55, com `display_transform=rotate-270` em `walkmam.conf`; o DTB da X35S/X35H
-> fica em `extlinux/extlinux.conf.x35s`.
+> **#88 é o run que deve ser usado.** Ele mantém o boot ativo da X55 (`rotate-270`) e
+> acrescenta o diagnóstico de Kodi/USB (`/boot/kodi-start.log`, `/boot/usb-gadget.log`,
+> `diagnostico.txt` em 2 capturas) e a entrada `extlinux/extlinux.conf.x55-peripheral`
+> para testar a ancoragem USB com `dr_mode = "peripheral"`.
 
 O #82/#83 falharam sempre no step **"Build Minimal RootFS (Debian ARM64)"**, com
 `ep0: command not found` e `here-document ... delimited by end-of-file`. Causa: o step

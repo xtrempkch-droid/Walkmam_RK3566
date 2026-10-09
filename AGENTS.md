@@ -42,7 +42,7 @@ tools/             utilitários auxiliares
 | Item | Estado |
 | --- | --- |
 | Boot, U-Boot, painel (display liga), Debian | **confirmado em hardware** |
-| X55: boot ativo com o DTB da X55 + `display_transform=rotate-270` | **implementado** (run #87) |
+| X55: boot ativo com o DTB da X55 + `display_transform=rotate-270` | **implementado** (runs #87/#88) |
 | X35S/X35H: usam o **mesmo** DTB (`rk3566-powkiddy-x35s.dts` faz `#include` do X55) | confirmado no código |
 | `rocknix-joypad` (17 botões / 4 eixos) + mapa do Kodi | confirmado no X55 (teste anterior) |
 | **X55: Kodi não inicia — a tela fica em loop** | **BLOQUEIO ABERTO** |
@@ -97,7 +97,7 @@ caminho oficial; o rootfs Debian e a montagem da imagem exigem `sudo`.
 2. **Um DTB por placa, mas X35S e X35H compartilham o mesmo.** O `rk3566-powkiddy-x35s.dts`
    faz `#include` do DTS da X55 e sobrescreve o painel (640x480,
    `rocknix,generic-dsi`). Bootar a X55 com o DTB da X35S deixa a tela preta — foi a
-   regressão corrigida no run #87.
+   regressão corrigida nos runs #87/#88.
 3. **FDT ausente = aparelho sem imagem** (LED aceso). O step de imagem falha de
    propósito se faltar o DTB ativo.
 4. **Rotação vem de `display_transform`** em `devices/<placa>/device.conf`, gravada em
@@ -137,11 +137,13 @@ caminho oficial; o rootfs Debian e a montagem da imagem exigem `sudo`.
 - Fez: corrigiu a regressão de "sem imagem" (o boot ativo usava o DTB da X35S; agora
   usa o DTB da X55, com o DTB da X35S/X35H em `extlinux/extlinux.conf.x35s`); criou
   `display_transform` por `device.conf` (X55 `rotate-270`, X35S/X35H `normal`); o
-  `build.sh`/`create-image.sh` gravam `walkmam.conf`. Submeteu tudo ao `main`
-  (commit `e430e61`) e o build **#87** passou, gerando o artifact.
-- Fez também: melhorou o diagnóstico de USB/Kodi (role/UDC, `kodi-start.log`) e criou
-  uma variante de boot `extlinux.conf.x55-peripheral` (USB forçado a *device`) para
-  teste. Criou este `AGENTS.md`.
+  `build.sh`/`create-image.sh` gravam `walkmam.conf`. Submeteu ao `main` e o build
+  **#87** passou.
+- Fez também: melhorou o diagnóstico de USB/Kodi (role/UDC, `kodi-start.log`,
+  `dump-diagnostico` em 2 capturas) e criou uma variante de boot
+  `extlinux.conf.x55-peripheral` (USB forçado a *device*) para teste. Criou este
+  `AGENTS.md`. Build **#88** passou e é o **run atual a usar** (keeps X55 ativo +
+  `rotate-270` + diagnóstico).
 - **Próximo (depende do aparelho):** gravar o artifact do run verde mais recente no X55
   e devolver o `diagnostico.txt`. Com ele, fechar: (a) por que o Kodi não inicia;
   (b) se a entradas `*peripheral` faz a ancoragem USB funcionar; (c) o sentido correto
