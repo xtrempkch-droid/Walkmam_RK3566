@@ -110,7 +110,8 @@ aparelhos, trocando o `FDT` no `extlinux.conf`.
 | Weston com `drm-backend.so` + `kiosk-shell` | **confirmado** |
 | Kodi do Debian bookworm é 20.1 **com Wayland** (`BUILD_WAYLAND=yes`) | **confirmado (código)** |
 | X55: Kodi inicia e mostra a interface | **FALHA em aberto** (tela em loop) |
-| USB gadget (ancoragem) no X55 com `dr_mode = "otg"` | **FALHA em aberto** |
+| USB gadget (ancoragem) no X55: rede `usb0` no PC | **confirmado** (10.55.0.1 responde e a porta 22 abre, verificado do PC em 2026-10-09) |
+| Login do root por senha no SSH | **era bloqueado** (`prohibit-password`); corrigido no #89 |
 | `dr_mode = "peripheral"` faz a ancoragem USB funcionar | **hipótese** (testar `*peripheral`) |
 | Sentido da rotação no X55 (`rotate-270` padrão; alternativo `rotate-90`) | **não validado** |
 | Contagem de botões/eixos na X35H | **não medido** |

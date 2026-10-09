@@ -64,12 +64,17 @@ hipótese como fato ao portar outra placa.
 - O arquivo `rocknix-singleadc-joypad.c` do mesmo repositório também usa
   `input-polldev.h`. Não foi confirmado que a X35S precise dele.
 
-## USB gadget (ancoragem SSH pelo cabo): não ancora (X55 e X35H)
+## USB gadget (ancoragem SSH pelo cabo): rede sobe; SSH exigia ajuste
 
-- **Relato mais recente (X55 com o DTB mainline da X55 ativo):** a ancoragem USB
-  **não funciona** — o PC não vê a `usb0`. Isso reabre o item: o "confirmado" de
-  rodadas anteriores foi obtido com outro DTB ativo (a imagem antiga bootava com o
-  DTB da X35S), então **não** dá para tratar a X55 como resolvida.
+- **Confirmado (verificado do PC em 2026-10-09):** com a imagem atual, a rede USB do
+  **X55 sobe** — o PC (interface `enx...`) obtém `10.55.0.2/24` e o aparelho responde
+  em **10.55.0.1** (ICMP ok, porta 22 aberta). Ou seja, a **ancoragem funciona**; o
+  que faltava era **entrar**: o Debian 12 usa `PermitRootLogin prohibit-password`, então
+  `root:root` era recusado mesmo com a senha certa. Corrigido no #89 com
+  `/etc/ssh/sshd_config.d/10-walkmam.conf` (`PermitRootLogin yes`).
+- **Anterior (rodada com o DTB da X35S ativo):** a ancoragem não funcionava; isso
+  combinava com o `dr_mode`/papel do controlador. Continua havendo a entrada
+  `extlinux/extlinux.conf.x55-peripheral` como caminho de teste.
 - **Confirmado (teste no aparelho, rodada anterior):** na X35H o kernel registra
   `dwc3 fcc00000.usb: failed to enable ep0out` e o PC não vê nada (nas duas portas
   testadas, com o `.dtb` oficial e com o nosso).
@@ -78,10 +83,9 @@ hipótese como fato ao portar outra placa.
   `status = "disabled"`; o DTS da X55 o habilita (`status = "okay"`) com
   `phys = <&usb2phy0_otg>` **e `extcon = <&usb2phy0>`**. O `extcon` é quem decide o
   papel host/device.
-- **Hipótese principal:** com `dr_mode = "otg"` **não há UDC** enquanto a detecção
-  de papel (VBUS/ID via `extcon`) não apontar *device*. Sem UDC, o `g_ether` não tem
-  onde se ligar → não existe `usb0`. Ou seja, o problema não é o driver, é o papel do
-  controlador.
+- **Correção da hipótese:** no **X55** o gadget **anexou** (apareceu UDC e a `usb0`
+  subiu), então a detecção de papel do OTG funciona nele. A hipótese do "sem UDC com
+  `otg`" fica restrita ao **X35H**, onde ainda se vê `failed to enable ep0out`.
 - **Fonte confirmada:** o DTS da X35S da ROCKNIX é
   `#include "rk3566-powkiddy-x55.dts"` e só sobrescreve `model`, `battery`,
   `joypad` e `panel`. Não há nó de USB próprio — então X35S e X55 compartilham a
