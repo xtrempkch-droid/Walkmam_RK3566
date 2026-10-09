@@ -154,9 +154,16 @@ caminho oficial; o rootfs Debian e a montagem da imagem exigem `sudo`.
 - Fez também: melhorou o diagnóstico de USB/Kodi (role/UDC, `kodi-start.log`,
   `dump-diagnostico` em 2 capturas) e criou uma variante de boot
   `extlinux.conf.x55-peripheral` (USB forçado a *device*) para teste. Criou este
-  `AGENTS.md`. Build **#88** passou e é o **run atual a usar** (keeps X55 ativo +
-  `rotate-270` + diagnóstico).
-- **Próximo (depende do aparelho):** gravar o artifact do run verde mais recente no X55
-  e devolver o `diagnostico.txt`. Com ele, fechar: (a) por que o Kodi não inicia;
-  (b) se a entradas `*peripheral` faz a ancoragem USB funcionar; (c) o sentido correto
-  da rotação (`rotate-270` ou `rotate-90`).
+  `AGENTS.md`. Build **#88** passou.
+- Fez ainda: **corrigiu o SSH** — o Debian 12 bloqueia login do root por senha
+  (`PermitRootLogin prohibit-password`), então `root:root` era recusado; a imagem agora
+  instala `/etc/ssh/sshd_config.d/10-walkmam.conf` com `PermitRootLogin yes` +
+  `PasswordAuthentication yes`. Launcher do Kodi com fallback **Weston → GBM** e o
+  motivo do erro **na tela**; `kodi.service` com `Restart=on-failure`/`RestartSec=15`
+  para a falha não virar loop que apaga a mensagem. Push `63f4bd7` → **build #89**.
+- **Handoff (2026-10-09):** o usuário **vai criar/baixar a imagem (#89) quando voltar
+  e avisar**; eu sigo com o teste. Confirmar que o #89 ficou `success`.
+- **Próximo (depende do aparelho):** gravar o artifact do #89 no X55, entrar por
+  `ssh root@10.55.0.1` (senha `root`) e devolver o `diagnostico.txt` + `kodi-start.log`.
+  Com isso, fechar: (a) por que o Kodi não inicia; (b) se a entrada
+  `x55-peripheral` ancora o USB; (c) o sentido da rotação (`rotate-270` ou `rotate-90`).

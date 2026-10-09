@@ -5,33 +5,42 @@ está pronto, o que ainda é **hipótese** e exatamente o que testar e devolver.
 
 ## Como retomar (leia isto primeiro)
 
-1. A imagem já está **pronta e publicada**: pegue o artifact
-   `rk3566-x55-mainline-sdcard-image` do **run verde (success) mais recente** em
-   Actions — hoje o **#88**. Ele já traz o boot ativo da X55,
-   `display_transform=rotate-270` e os logs de diagnóstico do Kodi/USB.
-   **Não** use runs com `failure` (o #82 e o #83 falharam por um bug de aspas no
-   `build.yml`, já corrigido).
-2. Grave no cartão e faça os testes da seção **"Testes a fazer"**.
-3. Me mande o **`diagnostico.txt`** de cada boot que interessar (e o trecho do
-   `weston.log` / `dmesg` quando o teste for de rotação / áudio / vídeo).
-4. Com os dados eu fecho cada hipótese: a tabela **"Confirmado x hipótese"** diz o que
-   ainda é suposição.
+> **Handoff combinado (2026-10-09):** o usuário vai **criar/baixar a imagem quando
+> voltar** e avisar; a partir daí eu (agente) sigo com o teste. O build com as
+> correções de SSH/Kodi é o **#89** (commit `63f4bd7`), disparado ao subir as
+> mudanças — **confirme que ficou `success`** antes de usar.
+
+1. Pegue o artifact `rk3566-x55-mainline-sdcard-image` do **run verde (success) mais
+   recente** em Actions — o esperado é o **#89**. Ele traz: boot ativo da X55
+   (`display_transform=rotate-270`), **login do root por senha liberado no SSH**,
+   o launcher do Kodi com fallback (Weston → GBM) e erro na tela, e os logs de
+   diagnóstico. **Não** use runs com `failure` (o #82/#83 falharam por um bug de
+   aspas já corrigido).
+2. Grave no cartão, ligue o cabo USB e faça os testes da seção **"Testes a fazer"**.
+3. Confirme que o **SSH** entra: `ssh root@10.55.0.1` (senha `root`). Se entrar, dá
+   para depurar ao vivo (dmesg, journalctl, `kodi.log`).
+4. Me mande o **`diagnostico.txt`** e, se o Kodi não abrir, o **`kodi-start.log`**
+   (e o `weston.log` quando o teste for de rotação/áudio/vídeo).
+5. Com os dados eu fecho cada hipótese: a tabela **"Confirmado x hipótese"** diz o
+   que ainda é suposição.
 
 ## Estado do CI
 
 | Run | Commit | Resultado | Observação |
 | --- | --- | --- | --- |
-| #88 | `84b38ea` (diagnóstico) | **success** | Kodi/USB diagnosticáveis + variante `x55-peripheral`; **use este** |
+| #89 | `63f4bd7` (SSH + Kodi) | **a confirmar** | libera SSH por senha (`PermitRootLogin`), launcher com fallback; **use se `success`** |
+| #88 | `84b38ea` (diagnóstico) | **success** | Kodi/USB diagnosticáveis + variante `x55-peripheral` |
 | #87 | `e430e61` (fix X55) | **success** | boot ativo da X55 + `rotate-270` |
 | #84 | `836f3b5` (fix) | **success** | imagem antiga (bootava com DTB da X35S) |
 | #83 | `664b057` (docs) | failure | mesmo bug de aspas do #82; ignorar |
 | #82 | `68c5c77` (merge USB) | failure | bug de aspas no `build.yml` |
 | #81 | `42e66b7` (merge rotação) | success | — |
 
-> **#88 é o run que deve ser usado.** Ele mantém o boot ativo da X55 (`rotate-270`) e
-> acrescenta o diagnóstico de Kodi/USB (`/boot/kodi-start.log`, `/boot/usb-gadget.log`,
-> `diagnostico.txt` em 2 capturas) e a entrada `extlinux/extlinux.conf.x55-peripheral`
-> para testar a ancoragem USB com `dr_mode = "peripheral"`.
+> **#89 é o run a usar** (se ficou `success`). Mantém o boot ativo da X55
+> (`rotate-270`), libera o **login do root por senha no SSH** (o Debian 12 bloqueia
+> por padrão com `PermitRootLogin prohibit-password`) e melhora o Kodi: fallback
+> Weston→GBM e o motivo do erro **na tela**. Inclui também o diagnóstico de Kodi/USB
+> e a entrada `extlinux/extlinux.conf.x55-peripheral`.
 
 O #82/#83 falharam sempre no step **"Build Minimal RootFS (Debian ARM64)"**, com
 `ep0: command not found` e `here-document ... delimited by end-of-file`. Causa: o step
