@@ -66,12 +66,13 @@ hipótese como fato ao portar outra placa.
 
 ## USB gadget (ancoragem SSH pelo cabo): rede sobe; SSH exigia ajuste
 
-- **Confirmado (verificado do PC em 2026-10-09):** com a imagem atual, a rede USB do
-  **X55 sobe** — o PC (interface `enx...`) obtém `10.55.0.2/24` e o aparelho responde
-  em **10.55.0.1** (ICMP ok, porta 22 aberta). Ou seja, a **ancoragem funciona**; o
-  que faltava era **entrar**: o Debian 12 usa `PermitRootLogin prohibit-password`, então
-  `root:root` era recusado mesmo com a senha certa. Corrigido no #89 com
-  `/etc/ssh/sshd_config.d/10-walkmam.conf` (`PermitRootLogin yes`).
+- **Confirmado (verificado do PC em 2026-10-09, e de novo após reboot):** a rede USB do
+  **X55 sobe** — o PC enumera `Linux-USB Ethernet/RNDIS Gadget`, obtém `10.55.0.2/24`
+  (IP estático; o gadget **não** faz DHCP) e o aparelho responde em **10.55.0.1**
+  (ICMP ok, porta 22 aberta). A ancoragem funciona; o que faltava era o SSH:
+  o Debian 12 usa `PermitRootLogin prohibit-password`, então `root:root` era recusado.
+  Corrigido no #89 com `/etc/ssh/sshd_config.d/10-walkmam.conf` — **validado**: login
+  `ssh root@10.55.0.1` com senha `root` funciona.
 - **Anterior (rodada com o DTB da X35S ativo):** a ancoragem não funcionava; isso
   combinava com o `dr_mode`/papel do controlador. Continua havendo a entrada
   `extlinux/extlinux.conf.x55-peripheral` como caminho de teste.
@@ -107,13 +108,15 @@ hipótese como fato ao portar outra placa.
   DRM, shell kiosk) com rotação na saída `DSI-1` (o valor usado até agora, `270`, é
   inválido; ver abaixo).
 - Em versões do Weston desta distro o backend se chama `drm-backend.so`, não `drm`.
-- **Bloqueio aberto (X55):** o Kodi não chega a mostrar a interface; a tela fica em
-  **loop** porque o `kodi.service` usa `Restart=always`. Como `--windowing=wayland` é
-  válido (acima), a causa é de **execução**, não de suporte. Para identificar o motivo,
-  `start-kodi-wayland.sh` agora grava a saída do Kodi em `/boot/kodi-start.log` e o
-  `weston.log` (com cópia em `/boot/weston-falhou.log` se o Weston morrer). Se
-  `kodi-start.log` não existir, o problema está no Weston; se existir, a mensagem nele
-  diz o motivo.
+- **CAUSA RAIZ do "Kodi não abre / tela em loop" (confirmada no aparelho,
+  2026-10-23):** o **Weston 10.0.1 cria o socket como `wayland-1`** quando
+  `WAYLAND_DISPLAY` está no ambiente, e não `wayland-0`. O launcher esperava por
+  `wayland-0`, dava timeout em 30 s e matava um Weston que estava **funcionando**
+  (o log mostrava DSI-1 720x1280, kiosk-shell e GL ES 3.1 prontos). O fallback para
+  GBM então falhava (`Unable to create GUI`) porque o DRM ainda estava sendo liberado.
+  Correção: `weston --socket=wayland-0` explícito + 3 s de espera antes do GBM.
+  Validado com reboot: `kodi.service` ativo, Weston + Kodi em Wayland, `GUI format
+  720x1280` e `xdg_output` lógico **1280x720** (rotação `rotate-270` aplicada).
 - **`transform=270` é inválido no Weston.** As man pages do Weston (`weston.ini(5)` e
   `weston-drm(7)`) listam só `normal`, `rotate-90`, `rotate-180`, `rotate-270` e as
   variantes `flipped-*`. O `weston.ini` do repo usava `transform=270`. O efeito exato

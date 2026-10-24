@@ -76,7 +76,10 @@ name=DSI-1
 transform=$TRANSFORM
 EOF_INI
 
-    weston --backend=drm-backend.so --tty=1 --idle-time=0 \
+    # --socket explícito: o Weston 10 cria "wayland-1" quando WAYLAND_DISPLAY
+    # está no ambiente; sem isso, o laço abaixo espera "wayland-0" para sempre
+    # (Weston estava funcionando e era morto pelo timeout).
+    weston --backend=drm-backend.so --tty=1 --socket=wayland-0 --idle-time=0 \
         --config="$WESTON_INI" --log="$WESTON_LOG" >> "$KODI_LOG" 2>&1 &
     weston_pid=$!
 
@@ -116,8 +119,10 @@ fi
 stop_weston
 
 # Tentativa 2: GBM direto (sem compositor). O painel já traz rotation=270 no
-# device tree, então o Kodi deve abrir sem transform do Weston.
+# device tree, então o Kodi deve abrir sem transform do Weston. Dá um tempo
+# para o DRM ser liberado pelo Weston antes de o Kodi tentar pegá-lo.
 if [ "$ok" -eq 0 ]; then
+    sleep 3
     say_tty "KODI: tentando --windowing=gbm (sem Weston)..."
     set +e
     "$KODI_BIN" --standalone --windowing=gbm >> "$KODI_LOG" 2>&1

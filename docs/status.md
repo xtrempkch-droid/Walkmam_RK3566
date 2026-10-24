@@ -109,9 +109,10 @@ aparelhos, trocando o `FDT` no `extlinux.conf`.
 | `rocknix-joypad` no X55 (17 botões / 4 eixos) + mapa Kodi | **confirmado** |
 | Weston com `drm-backend.so` + `kiosk-shell` | **confirmado** |
 | Kodi do Debian bookworm é 20.1 **com Wayland** (`BUILD_WAYLAND=yes`) | **confirmado (código)** |
-| X55: Kodi inicia e mostra a interface | **FALHA em aberto** (tela em loop) |
+| X55: Kodi inicia e mostra a interface | **RESOLVIDO** (Weston criava `wayland-1`; corrigido com `--socket=wayland-0`) |
+| X55: rotação da interface (landscape 1280x720) | **confirmado** (`xdg_output`; falta só validar o sentido visual) |
 | USB gadget (ancoragem) no X55: rede `usb0` no PC | **confirmado** (10.55.0.1 responde e a porta 22 abre, verificado do PC em 2026-10-09) |
-| Login do root por senha no SSH | **era bloqueado** (`prohibit-password`); corrigido no #89 |
+| Login do root por senha no SSH | **era bloqueado** (`prohibit-password`); corrigido no #89 e **validado** |
 | `dr_mode = "peripheral"` faz a ancoragem USB funcionar | **hipótese** (testar `*peripheral`) |
 | Sentido da rotação no X55 (`rotate-270` padrão; alternativo `rotate-90`) | **não validado** |
 | Contagem de botões/eixos na X35H | **não medido** |
@@ -119,16 +120,17 @@ aparelhos, trocando o `FDT` no `extlinux.conf`.
 
 ## Testes a fazer (na ordem)
 
-### 0. Kodi não inicia no X55 (tela em loop) — prioridade máxima
+### 0. Kodi não inicia no X55 (tela em loop) — ✅ RESOLVIDO em 2026-10-23
 
-Objetivo: descobrir **por que** o Kodi (ou o Weston) sai, causando o loop de tela.
+Causa raiz confirmada no aparelho: o **Weston 10.0.1 criava o socket como
+`wayland-1`** (porque `WAYLAND_DISPLAY` estava no ambiente); o launcher esperava
+`wayland-0`, dava timeout e matava um Weston que estava funcionando. Correção:
+`--socket=wayland-0` explícito (+ 3 s antes do fallback GBM). Validado com **reboot**:
+`kodi.service` ativo, Weston + Kodi em Wayland, `GUI format 720x1280`,
+`xdg_output` lógico **1280x720** (landscape).
 
-1. Boot normal na X55 com o cabo USB ligado (para o `kodi-start.log` sair no cartão).
-2. Tire o cartão e leia, na raiz da FAT: **`kodi-start.log`**, `usb-gadget.log` e a
-   seção de Kodi/Weston do `diagnostico.txt` (que agora tem 2 capturas, 15s e 60s).
-3. Me mande esses arquivos. Com eles eu fecho o bloqueio:
-   - se `kodi-start.log` não existir, o problema é o **Weston** (veja `weston.log`);
-   - se existir e terminar com erro, a mensagem diz o motivo (Wayland, GL, DBus...).
+**Falta só a confirmação visual:** se a imagem estiver de cabeça para baixo, troque
+`display_transform` em `walkmam.conf` para `rotate-90` (já está `rotate-270`).
 
 ### 1. USB gadget na X35H (prioridade)
 

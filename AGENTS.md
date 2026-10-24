@@ -45,41 +45,39 @@ tools/             utilitários auxiliares
 | X55: boot ativo com o DTB da X55 + `display_transform=rotate-270` | **implementado** (runs #87/#88) |
 | X35S/X35H: usam o **mesmo** DTB (`rk3566-powkiddy-x35s.dts` faz `#include` do X55) | confirmado no código |
 | `rocknix-joypad` (17 botões / 4 eixos) + mapa do Kodi | confirmado no X55 (teste anterior) |
-| **X55: Kodi não inicia — a tela fica em loop** | **BLOQUEIO ABERTO** |
-| **X55/X35H: ancoragem USB (gadget `g_ether`) não funciona** | **BLOQUEIO ABERTO** |
+| **X55: Kodi não inicia — a tela fica em loop** | **RESOLVIDO** (Weston 10 criava `wayland-1`; `--socket=wayland-0`) |
+| X55: ancoragem USB + SSH (`root`/`root` em 10.55.0.1) | **confirmado** (PC precisa de IP estático 10.55.0.2/24) |
+| X35H: ancoragem USB | **aberto** (`failed to enable ep0out`) |
 | Sentido da rotação no X55 (`rotate-270` ou `rotate-90`) | **não validado** |
 | Áudio (`asoc-simple-card: parse error`) e vídeo VA-API | **aberto** |
 
 Detalhes e histórico completo: [`docs/status.md`](docs/status.md) e
 [`docs/findings.md`](docs/findings.md). Não trate **hipótese** como fato.
 
-## 4. Bloqueios ativos (o que precisa de atenção)
+## 4. Bloqueios e armadilhas já resolvidos (não repita o erro)
 
-### 4.1 Kodi não inicia no X55 (tela em loop)
+### 4.1 X55: Kodi não iniciava (tela em loop) — RESOLVIDO
 
-Sintoma relatado: o **display funciona**, mas a interface fica em **loop**. Como
-`kodi.service` usa `Restart=always`/`RestartSec=5`, uma falha do Kodi (ou do Weston)
-produz exatamente esse ciclo.
+Sintoma: display ligava, terminal aparecia, mas o Kodi não abria (loop). Causas:
 
-Já confirmado no código (não é o problema):
+1. **`Restart=always` + `RestartSec=5`** transformava qualquer falha em loop e apagava
+   a mensagem. Agora `Restart=on-failure` + `RestartSec=15` + `StartLimitBurst=3`.
+2. **Weston 10.0.1 cria o socket como `wayland-1`** quando `WAYLAND_DISPLAY` está no
+   ambiente. O launcher esperava `wayland-0`, dava timeout (30 s) e matava um Weston
+   que estava funcionando. **Correção: `weston --socket=wayland-0` explícito.**
+   Validado com reboot: `GUI format 720x1280`, `xdg_output` lógico 1280x720.
+3. O fallback GBM falhava logo após matar o Weston (DRM ainda preso); agora espera 3 s.
 
-- Debian bookworm traz **Kodi 20.1** e o build habilita **Wayland**
-  (`BUILD_WAYLAND := yes` no `debian/rules`), então `--windowing=wayland` é válido.
-- O backend do Weston foi corrigido para `drm-backend.so` (não `drm`).
+Se voltar a falhar: o motivo fica em **`/boot/kodi-start.log`** e na **tela (tty1)**.
 
-**O que falta:** o motivo real da falha. O `diagnostico.txt` precisa trazer:
-`/boot/kodi-start.log` (novo), `journalctl -u kodi`, `/var/log/weston.log` e
-`/root/.kodi/temp/kodi.log`. Sem esse dado, qualquer correção é chute.
+### 4.2 Ancoragem USB — X55 funciona; X35H em aberto
 
-### 4.2 Ancoragem USB não funciona
-
-O DTB ativo da X55 habilita `usb@fcc00000` (`usb_host0_xhci`) com
-`dr_mode = "otg"` e um `extcon`. Com `otg`, o controlador só vira *device* (UDC) se a
-detecção de papel/VBUS funcionar; em handheld isso costuma não acontecer, e então
-o `g_ether` não tem UDC para se ligar → **sem `usb0`**.
-
-Existe uma variante histórica de teste com `dr_mode = "peripheral"` forçado
-(`extlinux.conf.x35s-peripheral`). Ver seção 6.
+- No **X55** a rede USB sobe (`RNDIS`), o aparelho fica em **10.55.0.1** e o SSH
+  (`root`/`root`) funciona. O PC **não** recebe IP por DHCP: configure **estático**
+  `10.55.0.2/24` na interface USB.
+- No **X35H** ainda aparece `dwc3 fcc00000.usb: failed to enable ep0out`. Existe a
+  variante de teste `extlinux.conf.x35s-peripheral` (USB forçado a *device*).
+- O gadget não faz DHCP — se o PC ficar em 169.254.x.x, é isso.
 
 ## 5. Como construir
 
@@ -163,7 +161,12 @@ caminho oficial; o rootfs Debian e a montagem da imagem exigem `sudo`.
   para a falha não virar loop que apaga a mensagem. Push `63f4bd7` → **build #89**.
 - **Handoff (2026-10-09):** o usuário **vai criar/baixar a imagem (#89) quando voltar
   e avisar**; eu sigo com o teste. Confirmar que o #89 ficou `success`.
-- **Próximo (depende do aparelho):** gravar o artifact do #89 no X55, entrar por
-  `ssh root@10.55.0.1` (senha `root`) e devolver o `diagnostico.txt` + `kodi-start.log`.
-  Com isso, fechar: (a) por que o Kodi não inicia; (b) se a entrada
-  `x55-peripheral` ancora o USB; (c) o sentido da rotação (`rotate-270` ou `rotate-90`).
+- **RESOLVIDO em 2026-10-23 (com SSH ao vivo no X55):** o Kodi não abria porque o
+  **Weston 10.0.1 criava o socket `wayland-1`** (com `WAYLAND_DISPLAY` no ambiente) e o
+  launcher esperava `wayland-0`, matando o Weston após 30 s. Correção:
+  `weston --socket=wayland-0` explícito + 3 s antes do fallback GBM. Confirmedo com
+  **reboot**: `kodi.service` ativo, Kodi em Wayland, `GUI format 720x1280`, `xdg_output`
+  lógico 1280x720 (rotate-270). Também validado o **SSH root/root** e a rede USB
+  (PC precisa de IP estático `10.55.0.2/24`; o gadget não faz DHCP).
+- **Próximos itens abertos:** áudio (sem sink), VA-API (`rockchip_drv_video.so` ausente)
+  e validar o **sentido visual** da rotação (`rotate-270` vs `rotate-90`).
