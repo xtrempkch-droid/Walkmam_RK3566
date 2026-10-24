@@ -175,10 +175,19 @@ Run workflow (ou um push no `main`). Gera o artifact
 **Local (U-Boot + kernel + DTB, sem root):** possível, com toolchain extra. O CI é o
 caminho oficial; o rootfs Debian e a montagem da imagem exigem `sudo`.
 
-**Cuidado com `[skip ci]`:** o GitHub olha a mensagem do **commit de topo** do push.
-Se você commitar uma correção e, no mesmo push, o último commit for `docs: ... [skip
-ci]`, o workflow **não roda** — a correção fica sem imagem. Ou faça dois pushes, ou
-dispare um commit vazio (`git commit --allow-empty`) para gerar a imagem.
+**Cuidado com `[skip ci]` (custou dois ciclos):** o GitHub olha a mensagem do
+**commit que o ref aponta**.
+
+1. Push na branch: vale o commit de topo. Se você commitar uma correção e o último
+   commit do push for `docs: ... [skip ci]`, o workflow **não roda** e a correção fica
+   sem imagem.
+2. **Push de tag:** vale a mensagem do commit **apontado pela tag**. Uma tag criada em
+   cima de um commit com `[skip ci]` também não roda — inclusive a tag
+   `retroarch-*`, que é justamente o gatilho da variante de jogos.
+
+Saídas: dois pushes separados; `git commit --allow-empty` sem `[skip ci]` para gerar a
+imagem; ou marcar a tag num commit limpo. Um `git push --delete` da tag e recriar em
+outro commit resolve sem force-push na branch.
 
 ## 5.1 Acesso ao aparelho (para depurar)
 
