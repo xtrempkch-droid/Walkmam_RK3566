@@ -212,6 +212,13 @@ hipótese como fato ao portar outra placa.
   Cuidados ao mexer no add-on: `bluetoothctl` imprime `[NEW] Device <MAC> <nome>` no
   scan e `Device <MAC> <nome>` em `devices`, então o parser não pode ser ancorado no
   início da linha; e as linhas `[CHG] ... RSSI:` não trazem nome (usar só `[NEW]`).
+  **Teclado da senha (bug corrigido em 2026-10-24):** o `xbmcgui.Dialog().input()`
+  recebe o tipo de teclado em `type` e a flag de ocultar em `option`. Medido no
+  aparelho com `Input.SendText` + leitura do retorno: `type=0,option=0` -> `'abC123xy'`;
+  `type=0,option=64` -> `'abC123xy'` (oculto); `type=5` -> `''`; **`type=64` -> `''` e o
+  teclado nem abre**. Passar `ALPHANUM_HIDE_INPUT` (64) no `type` — o que o add-on fazia
+  — é o que dava a impressão de "só aceita números". O correto é
+  `type=INPUT_ALPHANUM, option=ALPHANUM_HIDE_INPUT`.
   **GUI validada no aparelho (2026-10-24)** usando o JSON-RPC do Kodi em TCP **9090**
   (o `--webserver` da 8080 está desligado; a 9090 responde sem habilitar nada):
   `Addons.GetAddonDetails` devolveu `{name: "Walkmam Radio", type: "xbmc.python.script",
