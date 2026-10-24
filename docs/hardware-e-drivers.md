@@ -250,6 +250,41 @@ Consequências para portar:
 5. Bateria menor (3 000 mAh).
 6. HDMI desligado (não existe porta física).
 
+### 4.1 Como funciona o `panel_description` (o "device tree do painel")
+
+O driver `panel-generic-dsi` não tem timings no código: ele **interpreta strings** do
+device tree, uma por elemento da lista. Três prefixos (CONFIRMADO em
+`drivers/gpu/drm/panel/panel-generic-dsi.c`):
+
+| Prefixo | Função | Chaves aceitas |
+| --- | --- | --- |
+| `G` | globais do painel | `size=<largura_mm>,<altura_mm>`; `delays=<prepare>,<reset>,<init>,<enable>,<ready>` em ms; `format=rgb888` (também `rgb666`, `rgb666_packed`, `rgb565`); `lanes=<n>`; `flags=<hex>` |
+| `M` | um modo de vídeo | `clock=<kHz>`, `horizontal=<hdisplay>,<hsync_start>,<hsync_end>,<htotal>`, `vertical=<vdisplay>,<vsync_start>,<vsync_end>,<vtotal>`, `default=1` |
+| `I` | um passo da sequência de init | `seq=<bytes em hex>`, `dcs=<cmd em hex>`, `data=<bytes em hex>`, `read=<n>`, `wait=<ms>` |
+
+Exemplo da X35S, traduzido:
+
+```text
+"G size=70,52 delays=60,60,60,120,20 format=rgb888 lanes=4 flags=0xe03"
+"M clock=30000 horizontal=640,150,50,150 vertical=480,20,6,12 default=1"   # 58,5 fps
+"I seq=b9f11283"      # SETEXTC
+"I seq=11 wait=250"   # SLPOUT + 250 ms
+"I seq=29 wait=50"    # DISPON
+```
+
+Consequências práticas para portar:
+
+* `flags=0xe03` é o `dsi->mode_flags` **cru**, somado dos bits do MIPI DSI
+  (`MIPI_DSI_MODE_VIDEO | ... | MIPI_DSI_MODE_NO_EOT_PACKET`). Se o painel acender e não
+  desenhar, o suspeito nº 1 é esse campo.
+* Vários `M` = vários modos; o que tem `default=1` é o escolhido. Os comentários com
+  `# fps=` e `(CAN FAIL)` vêm do processo de descoberta da ROCKNIX — os marcados como
+  `CAN FAIL` podem não sincronizar.
+* `delays` são **em ms e na ordem** prepare, reset, init, enable, ready. Encurtar o
+  `init` costuma dar tela branca/preta intermitente.
+* O `rotation` do nó `&panel` da X35S é `<0>`; a rotação da interface vem do Weston
+  (ver F8).
+
 **Não confirmado:** Wi-Fi e Bluetooth na **X35S** (o DTS herda os nós da X55; se a
 placa tiver o RTL8821CS, deve funcionar com o mesmo firmware da X55), quantidade de
 botões/eixos, e **nada foi testado em hardware**. Na **X35H** o projeto registra "sem
