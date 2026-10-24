@@ -110,13 +110,23 @@ aparelhos, trocando o `FDT` no `extlinux.conf`.
   padrão — sem esse drop-in, `root:root` é recusado). Pelo cabo USB o aparelho fica
   em **10.55.0.1**. Ver "Segurança" no `docs/roadmap.md`.
 - **Painel web de Wi-Fi/Bluetooth:** `walkmam-webui.service` (busybox httpd) na porta
-  **8080**, servindo `variants/kodi/overlay/usr/local/share/walkmam-webui/`. Acesse
+  **8088**, servindo `variants/kodi/overlay/usr/local/share/walkmam-webui/`. Acesse
   `http://10.55.0.1:8088` pelo cabo (ou pelo IP do Wi-Fi) para procurar/conectar redes
   e parear dispositivos Bluetooth — o Kodi em si não gerencia rádio.
   Wi-Fi usa `nmcli`/`wpa_supplicant`; BT usa `bluetoothctl`/`bluez`.
+- **Add-on dentro do Kodi (`script.walkmam.radio`, "Walkmam Radio"):** o Kodi 20 no
+  Linux **não tem** gerenciador de rádio (o de Wi-Fi existe só nos builds
+  Windows/Android), então o projeto traz um add-on Python em
+  `variants/kodi/overlay/usr/share/kodi/addons/script.walkmam.radio/`. Ele fala direto
+  com o `nmcli` (Wi-Fi: redes, conectar, desconectar) e o `bluetoothctl` (BT: ligar,
+  procurar, parear, conectar, ficar visível). Aparece em **Add-ons → Add-ons de
+  programas**. Validado no aparelho: o `CAddonMgr` registra
+  `script.walkmam.radio v1.0.0 installed` e as leituras reais (redes Wi-Fi, controlador
+  BT, scan) funcionam.
 - **Firmware de rádio:** o CI baixa do `linux-firmware` (tag **20260309**, sha256
-  conferido) `rtw88/rtw8821c_fw.bin`, `rtl_bt/rtl8821cs_fw.bin` e a config do 8821C
-  renomeada para `rtl8821cs_config.bin`.
+  conferido) `rtw88/rtw8821c_fw.bin` e `rtl_bt/rtl8821cs_fw.bin`, e **gera** o
+  `rtl_bt/rtl8821cs_config.bin` (25 bytes, com a entrada UART `0x0c`) — ver
+  `docs/findings.md`.
 
 ## Confirmado x hipótese
 

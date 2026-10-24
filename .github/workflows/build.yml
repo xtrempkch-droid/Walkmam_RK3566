@@ -691,6 +691,25 @@ jobs:
         echo "--> Criando serviço Kodi em Weston/Wayland sobre DRM no tty1..."
         sudo chroot rootfs systemctl enable kodi.service
 
+        echo "--> Instalando o add-on Walkmam Radio (Wi-Fi/Bluetooth dentro do Kodi)..."
+        echo "--> O Kodi 20 no Linux NAO tem gerenciador de radio (o de Wi-Fi so"
+        echo "--> existe nos builds Windows/Android), entao o add-on chama o"
+        echo "--> nmcli (NetworkManager) e o bluetoothctl (BlueZ) direto."
+        echo "--> Fica em Add-ons > Add-ons de programas > Walkmam Radio."
+        sudo mkdir -p rootfs/usr/share/kodi/addons/script.walkmam.radio
+        sudo install -D -m 0644 \
+          variants/kodi/overlay/usr/share/kodi/addons/script.walkmam.radio/addon.xml \
+          rootfs/usr/share/kodi/addons/script.walkmam.radio/addon.xml
+        sudo install -D -m 0644 \
+          variants/kodi/overlay/usr/share/kodi/addons/script.walkmam.radio/default.py \
+          rootfs/usr/share/kodi/addons/script.walkmam.radio/default.py
+        # O add-on e script Python: se nao compilar, o Kodi falha so na hora de
+        # abrir. Checamos a sintaxe aqui para o build quebrar antes.
+        python3 -m py_compile \
+          variants/kodi/overlay/usr/share/kodi/addons/script.walkmam.radio/default.py \
+          && echo "--> script.walkmam.radio: sintaxe Python ok" \
+          || { echo "!!! default.py com erro de sintaxe" >&2; exit 1; }
+
         echo "--> Instalando o painel web (Wi-Fi/Bluetooth) na porta 8088..."
         echo "--> O Kodi não gerencia rádio; o painel fica acessível em"
         echo "--> http://10.55.0.1:8088 (cabo) ou no IP do Wi-Fi, sem sair do Kodi."

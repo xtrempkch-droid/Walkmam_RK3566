@@ -48,9 +48,49 @@ Depois de preparar os artefatos de U-Boot, kernel e rootfs, execute:
 build/build.sh powkiddy-x55 kodi
 ```
 
-Por padrão, o script procura `uboot/`, `kernel/` e `rootfs/` na raiz do repositório e grava a imagem compactada em `output/`. Os caminhos podem ser definidos por `WALKMAN_UBOOT_DIR`, `WALKMAN_KERNEL_DIR`, `WALKMAN_ROOTFS_DIR` e `WALKMAN_OUTPUT_DIR`; caminhos relativos também são resolvidos a partir da raiz do repositório. `WALKMAN_DTB_SOURCE` pode apontar para um DTB de referência já obtido; sem isso, usa o DTB compilado no diretório do kernel. A rotação da interface vem de `display_transform` no `device.conf` (X55 `rotate-90`, X35S/X35H `normal`) e é gravada em `walkmam.conf` na partição de boot. Wi-Fi/Bluetooth são gerenciados pelo painel web em `http://10.55.0.1:8088` (o Kodi não tem UI de rádio). O script não baixa fontes nem monta o rootfs: no momento, o workflow do GitHub Actions é o fluxo completo de build.
+Por padrão, o script procura `uboot/`, `kernel/` e `rootfs/` na raiz do repositório e grava a imagem compactada em `output/`. Os caminhos podem ser definidos por `WALKMAN_UBOOT_DIR`, `WALKMAN_KERNEL_DIR`, `WALKMAN_ROOTFS_DIR` e `WALKMAN_OUTPUT_DIR`; caminhos relativos também são resolvidos a partir da raiz do repositório. `WALKMAN_DTB_SOURCE` pode apontar para um DTB de referência já obtido; sem isso, usa o DTB compilado no diretório do kernel. A rotação da interface vem de `display_transform` no `device.conf` (X55 `rotate-90`, X35S/X35H `normal`) e é gravada em `walkmam.conf` na partição de boot. Wi-Fi/Bluetooth são gerenciados por um **add-on dentro do Kodi** (`Walkmam Radio`, em Add-ons → Add-ons de programas) e pelo painel web em `http://10.55.0.1:8088` — o Kodi 20 no Linux não traz UI de rádio. O script não baixa fontes nem monta o rootfs: no momento, o workflow do GitHub Actions é o fluxo completo de build.
 
 Para executar o build completo, use **Actions → Build Mainline RK3566 (Powkiddy X55) OS → Run workflow**. Uma única imagem atende os três aparelhos (X55, X35S e X35H — X35S e X35H compartilham o mesmo DTB): o boot ativo sai com o **DTB da X55**; para X35S/X35H, copie `extlinux/extlinux.conf.x35s` por cima de `extlinux.conf` e ajuste `display_transform=normal` em `walkmam.conf`. O artifact mantém o nome histórico `rk3566-x55-mainline-sdcard-image` por compatibilidade, e a imagem não representa validação em hardware.
+
+## Créditos e transparência sobre o uso de IA
+
+**Os códigos deste repositório foram escritos por inteligência artificial.** A escolha
+é declarada de propósito: quem visita o projeto deve saber como ele foi produzido, o
+que foi verificado em hardware e o que ainda é hipótese.
+
+- **Modelo principal:** **DeepSeek** — responsável pela criação dos códigos do projeto:
+  o workflow de build (`.github/workflows/build.yml`), os scripts de build e imagem
+  (`build/`), os overlays de rootfs e serviços systemd (`variants/kodi/overlay/`), o
+  painel web (`walkmam-webui`), o add-on `script.walkmam.radio`, os scripts de
+  diagnóstico e a documentação em `docs/` e `AGENTS.md`.
+- **Assistente de codificação:** GitHub Copilot (agente de código no VS Code), usado
+  para operar o mesmo trabalho — ler logs do aparelho, propor correções e editar os
+  arquivos. Os commits trazem o trailer `Co-authored-by: Copilot`.
+
+### O que isso significa na prática
+
+- **Verificado em hardware:** tudo o que está marcado como *confirmado* em
+  [docs/findings.md](docs/findings.md) e na tabela **"Confirmado x hipótese"** de
+  [docs/status.md](docs/status.md) foi testado num **Powkiddy X55 real** (boot, tela,
+  rotação `rotate-90`, controles, áudio, Wi-Fi, Bluetooth, USB e SSH).
+- **Não verificado:** **X35S e X35H nunca foram testados em hardware** por quem
+  escreveu estes códigos. O que existe para eles é o DTB de referência da ROCKNIX e
+  configuração de build — trate como experimental.
+- **Código gerado por IA erra:** os erros que já apareceram (DTB errado no boot, socket
+  `wayland-1` do Weston, `PermitRootLogin`, config de Bluetooth ausente, patches de DTS
+  silenciosamente ignorados) estão documentados em [AGENTS.md](AGENTS.md) e em
+  [docs/findings.md](docs/findings.md) justamente para não voltarem. Ao revisar,
+  desconfie: nada aqui é dogma.
+- **Licenças de terceiros:** o projeto reutiliza código e referências de **ROCKNIX**,
+  **Linux mainline**, **U-Boot**, **rkbin**, **linux-firmware**, **Debian** e **Kodi**,
+  cada um sob a sua própria licença. Onde algo foi copiado ou adaptado, o caminho é
+  citado no arquivo (por exemplo, os overrides de DTS que reproduzem patches da
+  ROCKNIX). Os créditos desses projetos são deles, não deste repositório.
+
+> Se você for reutilizar este trabalho, mantenha esta seção. O objetivo não é
+> "parecer feito à mão", é deixar claro o que é criação assistida por IA, o que foi
+> validado num aparelho de verdade e o que ainda é tentativa.
+
 
 ## Documentação
 

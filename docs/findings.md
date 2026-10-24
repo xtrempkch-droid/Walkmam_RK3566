@@ -197,10 +197,21 @@ hipótese como fato ao portar outra placa.
 - **Rede de segurança:** `walkmam-radio-retry.service` roda após o boot e, se `wlan0`
   não existir, recarrega o módulo (até 3x); se `hci0` estiver sem endereço, reinicia o
   `hci_uart`/BlueZ. Log em `/boot/radio-retry.log`.
-- **Gerenciamento:** o Kodi não gerencia rádio. O projeto instala um **painel web**
-  (`walkmam-webui.service`, busybox httpd na porta **8088**) com scan/conexão de Wi-Fi
-  (`nmcli`) e scan/pareamento de Bluetooth (`bluetoothctl`). Acesse
-  `http://10.55.0.1:8088` pelo cabo ou no IP do Wi-Fi.
+- **Gerenciamento:** o Kodi 20 no Linux **não tem** UI de rádio (o gerenciador de
+  Wi-Fi do Kodi existe apenas nos builds Windows/Android; no Linux não há nada no
+  menu). Por isso o projeto entrega duas interfaces:
+  1. **Add-on `script.walkmam.radio`** ("Walkmam Radio") — diálogos nativos do Kodi em
+     **Add-ons → Add-ons de programas**. Usa `nmcli` para Wi-Fi e `bluetoothctl` para
+     BT. É um `xbmc.python` 3.0.0 (script add-on), instalado em
+     `/usr/share/kodi/addons/script.walkmam.radio/`. O CI checa a sintaxe do
+     `default.py` (`py_compile`) para o build falhar antes em vez de dar erro só ao
+     abrir no aparelho.
+  2. **Painel web** (`walkmam-webui.service`, busybox httpd na porta **8088**) para
+     quando se está no PC ou no celular: `http://10.55.0.1:8088` pelo cabo ou no IP do
+     Wi-Fi.
+  Cuidados ao mexer no add-on: `bluetoothctl` imprime `[NEW] Device <MAC> <nome>` no
+  scan e `Device <MAC> <nome>` em `devices`, então o parser não pode ser ancorado no
+  início da linha; e as linhas `[CHG] ... RSSI:` não trazem nome (usar só `[NEW]`).
 
 ## Cosmético: leve esticamento horizontal (relato no aparelho, 2026-10-24)
 

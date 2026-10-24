@@ -220,3 +220,24 @@ caminho oficial; o rootfs Debian e a montagem da imagem exigem `sudo`.
 - Pendente / próximo: gravar a imagem nova (#98) e validar áudio no aparelho; o
   esticamento horizontal de ~1,6% é do painel (67x121 mm vs modo 720x1280).
 
+### 2026-10-24 — Copilot (add-on de rádio dentro do Kodi + créditos)
+
+- Fez: criou o add-on **`script.walkmam.radio`** ("Walkmam Radio") porque o Kodi 20 no
+  Linux não tem UI de rádio (o gerenciador de Wi-Fi só existe nos builds
+  Windows/Android). É um script add-on (`xbmc.python` 3.0.0) em
+  `variants/kodi/overlay/usr/share/kodi/addons/script.walkmam.radio/` que chama
+  `nmcli` (listar/conectar/desconectar Wi-Fi) e `bluetoothctl` (ligar, procurar,
+  parear, conectar, ficar visível). O CI instala e roda `py_compile` no `default.py`.
+  Também adicionou ao `README.md` a seção **"Créditos e transparência sobre o uso de
+  IA"** (DeepSeek como modelo criador dos códigos + Copilot como assistente, o que foi
+  verificado em hardware e o que não foi).
+- Validado no #97: o Kodi registra `CAddonMgr::FindAddons: script.walkmam.radio v1.0.0
+  installed`; e a lógica rodou no aparelho com os binários reais — `wifi_redes()`
+  devolveu SSIDs com sinal/segurança, `bt_info()` devolveu o controlador
+  `A8:4F:A4:C9:98:4C`, `bt_escanear(8)` achou 2 dispositivos em 8,3 s.
+- Armadilha: `bluetoothctl` imprime `[NEW] Device <MAC> <nome>` no scan e
+  `Device <MAC> <nome>` em `devices` — o regex **não** pode ser ancorado no começo da
+  linha; e linhas `[CHG] ... RSSI:` não trazem nome (usar só as `[NEW]`).
+- Pendente / próximo: gravar a imagem (#99 em diante) e abrir o add-on pela TV para
+  confirmar os diálogos (a lógica já foi testada, a GUI não).
+
