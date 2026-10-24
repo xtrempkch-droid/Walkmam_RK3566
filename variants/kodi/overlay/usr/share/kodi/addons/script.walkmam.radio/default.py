@@ -36,6 +36,15 @@ SYSTEMCTL = _achar('systemctl', ['/usr/bin/systemctl', '/bin/systemctl'])
 # O scan interativo imprime "[NEW] Device MAC nome"; `bluetoothctl devices`
 # imprime "Device MAC nome". Por isso a busca nao e ancorada no inicio.
 RE_DEVICE = re.compile(r'Device\s+([0-9A-Fa-f:]{17})\s*(.*)$')
+
+# Teclado do xbmcgui. Medido no Kodi 20 do aparelho:
+#   input(type=0, option=0)   -> teclado alfanumerico, aceita "abC123xy"
+#   input(type=0, option=64)  -> idem, com os caracteres ocultos
+#   input(type=64)            -> o teclado NAO abre (retorna vazio)
+# Ou seja: ALPHANUM_HIDE_INPUT e uma *opcao*, nao um tipo. Passar 64 no `type`
+# (o bug antigo) dava a impressao de "so aceita numeros".
+INPUT_ALPHANUM = getattr(xbmcgui, 'INPUT_ALPHANUM', 0)
+ALPHANUM_HIDE_INPUT = getattr(xbmcgui, 'ALPHANUM_HIDE_INPUT', 64)
 SEGURANCA_ABERTA = ('', '--', 'none', 'open')
 
 
@@ -138,6 +147,19 @@ def wifi_redes():
     return sorted(redes.values(), key=lambda r: (-r['signal'], r['ssid'].lower()))
 
 
+def pedir_senha(ssid, visivel=False):
+    """Abre o teclado alfanumerico (letras + numeros) para a senha do Wi-Fi.
+
+    Por padrao os caracteres ficam ocultos; com visivel=True eles aparecem, o
+    que ajuda a conferir o que foi digitado no controle do aparelho.
+    """
+    opcao = 0 if visivel else ALPHANUM_HIDE_INPUT
+    titulo = 'Senha de %s' % ssid
+    if visivel:
+        titulo += ' (visivel)'
+    return xbmcgui.Dialog().input(titulo, type=INPUT_ALPHANUM, option=opcao)
+
+
 def wifi_conectar(ssid, senha=None):
     args = [NMCLI, 'dev', 'wifi', 'connect', ssid]
     if senha:
@@ -214,9 +236,13 @@ def menu_wifi_redes():
                   codigo == 0)
         return
     senha = None
-    if rede['security'].strip().lower() not in SEGURANCA_ABERTA:
-        senha = dialogo.input('Senha de %s' % rede['ssid'], type=xbmcgui.ALPHANUM_HIDE_INPUT)
+    protegida = rede['security'].strip().lower() not in SEGURANCA_ABERTA
+    if protegida:
+        senha = pedir_senha(rede['ssid'])
         if senha is None:
+            return
+        if not senha:
+            notificar('Senha vazia', ok=False)
             return
     progresso.create(TITULO, 'Conectando em %s...' % rede['ssid'])
     progresso.update(50)
@@ -227,8 +253,26 @@ def menu_wifi_redes():
         notificar('Conectado em %s' % rede['ssid'])
         if ip:
             notificar('IP: %s' % ip, ms=6000)
-    else:
-        mostrar('Falha ao conectar em %s.\n\n%s' % (rede['ssid'], saida.strip()[:800]))
+        return
+    # Digitar senha no controle erra facil: deixa tentar de novo vendo os
+    # caracteres antes de mostrar o erro do nmcli.
+    if protegida and dialogo.yesno(TITULO, 'Nao conectou em %s.\n\nDigitar a senha '
+                                   'de novo, agora com os caracteres visiveis?'
+                                   % rede['ssid']):
+        senha = pedir_senha(rede['ssid'], visivel=True)
+        if senha is None or not senha:
+            return
+        progresso.create(TITULO, 'Conectando em %s...' % rede['ssid'])
+        progresso.update(50)
+        codigo, saida = wifi_conectar(rede['ssid'], senha)
+        progresso.close()
+        if codigo == 0:
+            _, _, ip = wifi_estado()
+            notificar('Conectado em %s' % rede['ssid'])
+            if ip:
+                notificar('IP: %s' % ip, ms=6000)
+            return
+    mostrar('Falha ao conectar em %s.\n\n%s' % (rede['ssid'], saida.strip()[:800]))
 
 
 # --------------------------------------------------------------------------
