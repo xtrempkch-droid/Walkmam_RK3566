@@ -793,14 +793,25 @@ jobs:
 
           echo "--> [retroarch] Escrevendo o retroarch.cfg (com o caminho real dos cores)..."
           sudo mkdir -p rootfs/root/.config/retroarch
-          # Barra final igual ao padrão do Debian (".../libretro/").
-          sed "s|@LIBRETRO_DIR@|$LIBRETRO_DIR/|" \
+          # Barra final igual ao padrão do Debian (".../libretro/"). O valor vai
+          # numa variável só: quando o sed usava "$LIBRETRO_DIR/" e a asserção
+          # usava "$LIBRETRO_DIR", o grep não casava e o build abortava por causa
+          # da própria checagem.
+          LIBRETRO_DIR_CFG="$LIBRETRO_DIR/"
+          sed "s|@LIBRETRO_DIR@|$LIBRETRO_DIR_CFG|" \
             variants/retroarch/overlay/etc/walkmam/retroarch.cfg \
             | sudo tee rootfs/root/.config/retroarch/retroarch.cfg >/dev/null
-          if ! grep -q "^libretro_directory = \"$LIBRETRO_DIR\"" rootfs/root/.config/retroarch/retroarch.cfg; then
+          if ! grep -qF "libretro_directory = \"$LIBRETRO_DIR_CFG\"" rootfs/root/.config/retroarch/retroarch.cfg; then
             echo "!!! libretro_directory nao foi substituido no retroarch.cfg" >&2
+            echo "!!! esperado: libretro_directory = \"$LIBRETRO_DIR_CFG\"" >&2
+            grep -n 'libretro_directory' rootfs/root/.config/retroarch/retroarch.cfg >&2 || true
             exit 1
           fi
+          if grep -qF '@LIBRETRO_DIR@' rootfs/root/.config/retroarch/retroarch.cfg; then
+            echo "!!! sobrou placeholder @LIBRETRO_DIR@ no retroarch.cfg" >&2
+            exit 1
+          fi
+          echo "--> retroarch.cfg ok: libretro_directory = \"$LIBRETRO_DIR_CFG\""
 
           echo "--> [retroarch] Diretórios de ROMs/saves/bios..."
           sudo mkdir -p rootfs/storage/roms \
