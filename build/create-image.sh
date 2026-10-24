@@ -43,7 +43,7 @@ if [[ ! $DTB_NAME =~ ^[a-zA-Z0-9._-]+\.dtb$ ]]; then
     echo "Invalid DTB destination filename: $DTB_NAME" >&2
     exit 2
 fi
-if [[ -n $DISPLAY_TRANSFORM && ! $DISPLAY_TRANSFORM =~ ^(normal|rotate-90|rotate-180|rotate-270|flipped|flipped-rotate-90|flipped-rotate-180|flipped-rotate-270)$ ]]; then
+if [[ -n $DISPLAY_TRANSFORM && ! $DISPLAY_TRANSFORM =~ ^(auto|normal|rotate-90|rotate-180|rotate-270|flipped|flipped-rotate-90|flipped-rotate-180|flipped-rotate-270)$ ]]; then
     echo "Invalid display transform: $DISPLAY_TRANSFORM" >&2
     exit 2
 fi
@@ -166,8 +166,10 @@ if [[ -z $DISPLAY_TRANSFORM ]]; then
 fi
 cat > "$BOOT_MOUNT/walkmam.conf" << CONF
 # Configuração editável do Walkmam. Lida no boot por start-kodi-wayland.sh.
-# display_transform: normal | rotate-90 | rotate-180 | rotate-270 |
-#                    flipped | flipped-rotate-90 | flipped-rotate-180 | flipped-rotate-270
+# display_transform: auto | normal | rotate-90 | rotate-180 | rotate-270 |
+#                    flipped | flipped-rotate-90 | flipped-rotate-180 |
+#                    flipped-rotate-270
+# "auto" escolhe pelo modelo (X55 -> rotate-90, X35S/X35H -> normal).
 display_transform=$DISPLAY_TRANSFORM
 CONF
 

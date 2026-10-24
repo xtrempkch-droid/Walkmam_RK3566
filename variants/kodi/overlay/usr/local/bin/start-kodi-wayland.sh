@@ -22,8 +22,24 @@ say_tty() {
     printf '%s\n' "$*" >&2
 }
 
+# Rotação padrão por modelo, lida do device tree em uso. A X55 tem painel
+# 720x1280 montado deitado (precisa de rotate-90); X35S/X35H tem painel
+# 640x480 e ficam em "normal". Assim uma única imagem serve nos três sem
+# editar nada à mão.
+transform_do_modelo() {
+    modelo=
+    if [ -r /proc/device-tree/model ]; then
+        modelo=$(tr -d '\000' < /proc/device-tree/model 2>/dev/null | tr 'A-Z' 'a-z')
+    fi
+    case "$modelo" in
+        *x55*) printf 'rotate-90\n' ;;
+        *)     printf 'normal\n' ;;
+    esac
+}
+
 # Rotação da saída DSI-1 (valores do Weston). Vem de "display_transform=<valor>"
 # em walkmam.conf, na partição FAT (BOOT), editável no PC sem recompilar.
+# "auto" (ou vazio/valor inválido) usa o padrão do modelo.
 read_transform() {
     value=
     if [ -r "$WALKMAM_CONF" ]; then
@@ -36,7 +52,7 @@ read_transform() {
             printf '%s\n' "$value"
             ;;
         *)
-            printf 'normal\n'
+            transform_do_modelo
             ;;
     esac
 }

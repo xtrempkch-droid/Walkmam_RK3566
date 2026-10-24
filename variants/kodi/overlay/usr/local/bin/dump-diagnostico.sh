@@ -35,8 +35,28 @@ capture() {
   echo "----- /sys/class/udc (controlador USB em modo gadget) -----"
   ls -la /sys/class/udc/ 2>&1
   echo
+  echo "----- modelo do aparelho (device tree em uso) -----"
+  tr -d '\000' < /proc/device-tree/model 2>&1 || echo "(sem /proc/device-tree/model)"
+  echo
   echo "----- USB: dr_mode do nó usb@fcc00000 no device tree em uso -----"
   cat /proc/device-tree/usb@fcc00000/dr_mode 2>&1 || echo "(nó/atributo ausente)"
+  echo
+  echo "----- tela: modo e taxa ativos (responde 'o 75 Hz aplicou?') -----"
+  for m in /sys/class/drm/card0-*/modes; do
+    [ -e "$m" ] || continue
+    printf '%s (primeiro = modo preferido): ' "$m"
+    head -n 3 "$m" | tr '\n' ' '
+    echo
+  done
+  echo "conector/status:"
+  for st in /sys/class/drm/card0-*/status; do
+    [ -e "$st" ] || continue
+    printf '%s: ' "$st"; cat "$st" 2>&1
+  done
+  echo
+  echo "----- rotação efetiva (walkmam.conf + weston.ini) -----"
+  tr -d '\r' < /boot/walkmam.conf 2>&1 | grep -i transform || echo "(sem display_transform)"
+  grep -i '^transform' /run/kodi-wayland/weston.ini 2>&1 || echo "(weston.ini sem transform)"
   echo
   echo "----- USB: estado dos UDC (gadget) -----"
   for f in /sys/class/udc/*/state; do

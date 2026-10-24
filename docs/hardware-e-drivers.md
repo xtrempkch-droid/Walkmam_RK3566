@@ -29,7 +29,7 @@ com trechos da **ROCKNIX** (fixada por commit) que ainda não estão upstream.
 | Bateria (design) | 4 000 000 µAh | 3 000 000 µAh | idem X35S |
 | Wi-Fi/BT (RTL8821CS) | **sim**, confirmado funcionando | **não medido** (o DTS herda os nós da X55; se a placa tiver o chip, funciona) | **não tem** (registrado no projeto) |
 | HDMI físico | não | não | não |
-| Validado em hardware | **sim** (2026-10) | **não** | **não** |
+| Validado em hardware | **sim** (2026-10): vídeo, áudio, botões, rádio | **não** | **sim, parcial** (2026-10-24): vídeo, áudio e botões OK; USB em correção |
 
 Os três são RK3566 (4 núcleos Cortex-A55). Na **X55** medido: `MemTotal` ≈ 2 029 084 kB
 (2 GB). A RAM da X35S/X35H não foi medida.
@@ -296,16 +296,37 @@ WiFi, sem Bluetooth, sem touch".
 
 `devices/powkiddy-x35h/device.conf` está com `status=unsupported-no-independent-dtb` e
 `image_dtb=` vazio: **não existe DTB independente**. Na prática a X35H usa o mesmo DTB
-da X35S (as duas são "quase a mesma coisa", como a própria documentação do projeto
-registra). Tudo o que vale para a X35S vale para ela, e o mesmo aviso vale em dobro:
-**nunca foi validada em hardware**.
+da X35S (`rk3566-powkiddy-x35s*`), e o modelo reportado no device tree é
+`"Powkiddy x35s"` — não estranhe se `cat /proc/device-tree/model` disser x35s num X35H.
 
-Um detalhe que aparece nos testes: na X35H houve
-`dwc3 fcc00000.usb: failed to enable ep0out`, o que motivou a variante de teste
-`extlinux.conf.x35s-peripheral` (forçar USB a *device*). É **hipótese** que o OTG dessa
-placa precise de `dr_mode = "peripheral"` explícito — na X55 não precisa.
+### 5.1 O que já foi medido no hardware (2026-10-24)
 
----
+**CONFIRMADO no aparelho:**
+
+* **Vídeo** — painel liga, tela cheia, modo preferido a **58,5 Hz**, sem necessidade de
+  ajuste manual.
+* **Áudio** — funciona.
+* **Botões e direcionais** — funcionam (GPIO + eixos ADC), com o remapeamento A/B/X/Y
+  e a inversão de eixos que o DTS da X35S aplica.
+* **Rotação** — `normal` (painel 640x480).
+
+**Em aberto:** a **ancoragem USB** (rede `usb0`/SSH). Ver F12.
+
+### 5.2 Por que os 75 Hz "não aplicam" (não é limitação do hardware)
+
+O `panel_description` da X35S lista **vários** modos `M`, e o driver
+`panel-generic-dsi` marca como **preferido** só o que tem `default=1` — no caso o de
+**58,5 fps** (`clock=30000 horizontal=640,150,50,150 vertical=480,20,6,12`). O Kodi e o
+Weston usam justamente o modo preferido do conector, então escolher outra taxa no
+sistema não muda nada: a lista vem do device tree, não de EDID.
+
+Os 75,47 fps existem na lista, mas marcados `# (CAN FAIL)` — ou seja, o processo de
+descoberta da ROCKNIX não conseguiu confirmar sincronia neles. Para realmente testar
+75 Hz é preciso gerar um DTB em que esse `M` seja o `default=1` (e o de 58,5 perca o
+marcador). Sem isso, o aparelho continua em 58,5 Hz por escolha do device tree.
+
+Como conferir qual modo está ativo: `cat /sys/class/drm/card0-DSI-1/modes` (o primeiro
+é o preferido) — o `diagnostico.txt` agora traz isso.
 
 ## 6. Configuração de kernel obrigatória
 
@@ -470,6 +491,11 @@ X55: `display_transform=rotate-90` (Weston) e `rotation = <270>` no painel.
 X35S/X35H: `display_transform=normal` e `rotation = <0>`.
 Lembre: giram camadas diferentes (ver 3.1).
 
+Nesta imagem o padrão é `display_transform=auto`, que escolhe pelo
+`/proc/device-tree/model` (`*x55*` → `rotate-90`, resto → `normal`). Um valor explícito
+sempre vence. Se você está portando, essa é a forma de uma imagem só servir nas três
+placas.
+
 ### F9 — Weston cria `wayland-1`, não `wayland-0` · *usuário*
 
 Weston 10.0.1, quando encontra `WAYLAND_DISPLAY` no ambiente, cria o socket como
@@ -517,6 +543,43 @@ tipo em `type` e a flag de ocultar em **`option`**. `type=64` (que é a flag soz
 
 ---
 
+### F12 — USB: forçar `dr_mode = "peripheral"` na X35S/X35H · *DTS*
+
+Sintoma: o PC **não vê nada** e o kernel loga
+
+```text
+dwc3 fcc00000.usb: failed to enable ep0out
+```
+
+Causa: o controlador DWC3 (`usb@fcc00000`) vem do SoC com `dr_mode = "otg"`, então o
+papel host/device depende da detecção do cabo. Na X55 isso resolve para *device* e o
+`g_ether` ancora. Na X35S/X35H **com o mesmo DTB** não resolve, e o gadget falha ao
+habilitar o `ep0out` — que é o comando de endpoint que o DWC3 só aceita em modo device.
+
+```dts
+&usb_host0_xhci {
+	dr_mode = "peripheral";
+};
+```
+
+Como aplicar sem recompilar: desmonte o DTB, troque o `dr_mode` do nó `usb@fcc00000` e
+recompile.
+
+```sh
+dtc -I dtb -O dts -o x.dts /boot/dtbs/rk3566-powkiddy-x35s.dtb
+sed -i '/usb@fcc00000/,/};/ s/dr_mode = "otg";/dr_mode = "peripheral";/' x.dts
+dtc -I dts -O dtb -o /boot/dtbs/rk3566-powkiddy-x35s-peripheral.dtb x.dts
+# depois aponte o FDT do extlinux.conf para esse arquivo
+```
+
+**Trade-off:** com `peripheral` a porta deixa de funcionar como *host* (pendrive,
+teclado USB). Nesta família a porta é usada como device/charge, então o custo é baixo;
+mesmo assim a imagem mantém `extlinux.conf.x35s-otg` para voltar ao original.
+
+**Não confirmado ainda:** se essa é a causa no X35H (é a hipótese mais provável, pelo
+erro). A imagem nova já traz o DTB `peripheral` como padrão e o `diagnostico.txt` passa a
+registrar `dr_mode` do device tree em uso, então o próximo teste fecha a questão.
+
 ## 9. Código que você precisa carregar junto (não está no mainline)
 
 | Peça | De onde vem | Necessária para | Sem ela |
@@ -546,7 +609,7 @@ nada.
 | `wlan0` existe mas `unavailable` | falta `wpa_supplicant` | instalar `wpasupplicant` |
 | `hci0` com MAC zero, "No default controller" | falta o `config` com entrada `0x0c` | **F5** |
 | `Invalid header checksum` no BT | `config` com entrada de 13 bytes | **F5** (16 bytes) |
-| `dwc3 ... failed to enable ep0out` (X35H) | papel OTG | **hipótese:** `dr_mode = "peripheral"` |
+| `dwc3 ... failed to enable ep0out` (X35S/X35H) | `dr_mode="otg"` não resolve para device | **F12** |
 | `ssh root@...` recusa a senha certa | `PermitRootLogin prohibit-password` | **F10** |
 | PC fica em `169.254.x.x` no cabo | gadget não faz DHCP | IP estático `10.55.0.2/24` |
 | Sem controle | nó `rocknix-joypad` aninhado | **F7** |

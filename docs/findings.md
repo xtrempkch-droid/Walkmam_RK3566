@@ -99,9 +99,17 @@ hipótese como fato ao portar outra placa.
   `joypad` e `panel`. Não há nó de USB próprio — então X35S e X55 compartilham a
   mesma configuração de USB.
 - **Como testar:** bootar com `dr_mode = "peripheral"` forçado no DTB ativo. A imagem
-  oferece `extlinux.conf.x55-peripheral` (X55) e `extlinux.conf.x35s-peripheral`
-  (X35S/X35H). O `setup-usb-gadget.sh` também tenta, em best-effort, escrever
+  oferece `extlinux.conf.x55-peripheral` (X55) e, para X35S/X35H, a entrada
+  `extlinux.conf.x35s` já aponta para o DTB `peripheral` (e `x35s-otg` volta ao
+  original). O `setup-usb-gadget.sh` também tenta, em best-effort, escrever
   `device` em `/sys/class/usb_role/*/role`, e grava tudo em `/boot/usb-gadget.log`.
+- **Mecanismo do erro (fonte confirmada):** `failed to enable ep0out` vem de
+  `dwc3_gadget.c`, quando `__dwc3_gadget_ep_enable()` falha para o endpoint 0 OUT. Esse
+  comando de endpoint (DEPCMD) só completa com o controlador em modo *device*; em modo
+  *host* ele estoura o timeout. Ou seja: o gadget tentou subir e o DWC3 estava como
+  host. Daí a correção ser fixar o papel em `peripheral` no DTB, e não mexer em módulo.
+- **Medido na X35H (2026-10-24):** vídeo (640x480 a 58,5 Hz, tela cheia), **áudio** e
+  **botões/direcionais** funcionam. O USB é o único ponto em aberto.
 - Hipóteses ainda abertas: detecção de VBUS/ID, fornecimento do PHY, hub interno,
   cabo sem fios de dados, ou a porta ser host-only no hardware.
 

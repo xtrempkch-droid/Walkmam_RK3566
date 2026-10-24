@@ -104,7 +104,7 @@ if [[ ! $DTB_NAME =~ ^[a-zA-Z0-9._-]+\.dtb$ ]]; then
     echo "Invalid image_dtb value in $DEVICE_CONFIG." >&2
     exit 2
 fi
-if [[ -n $DISPLAY_TRANSFORM && ! $DISPLAY_TRANSFORM =~ ^(normal|rotate-90|rotate-180|rotate-270|flipped|flipped-rotate-90|flipped-rotate-180|flipped-rotate-270)$ ]]; then
+if [[ -n $DISPLAY_TRANSFORM && ! $DISPLAY_TRANSFORM =~ ^(auto|normal|rotate-90|rotate-180|rotate-270|flipped|flipped-rotate-90|flipped-rotate-180|flipped-rotate-270)$ ]]; then
     echo "Invalid display_transform value in $DEVICE_CONFIG: $DISPLAY_TRANSFORM" >&2
     exit 2
 fi

@@ -71,13 +71,22 @@ Sintoma: display ligava, terminal aparecia, mas o Kodi não abria (loop). Causas
 
 Se voltar a falhar: o motivo fica em **`/boot/kodi-start.log`** e na **tela (tty1)**.
 
-### 4.2 Ancoragem USB — X55 funciona; X35H em aberto
+### 4.2 Ancoragem USB — X55 funciona; X35S/X35H usa DTB `peripheral`
 
 - No **X55** a rede USB sobe (`RNDIS`), o aparelho fica em **10.55.0.1** e o SSH
   (`root`/`root`) funciona. O PC **não** recebe IP por DHCP: configure **estático**
   `10.55.0.2/24` na interface USB.
-- No **X35H** ainda aparece `dwc3 fcc00000.usb: failed to enable ep0out`. Existe a
-  variante de teste `extlinux.conf.x35s-peripheral` (USB forçado a *device*).
+- No **X35S/X35H** o mesmo DTB **não** ancora: o kernel loga
+  `dwc3 fcc00000.usb: failed to enable ep0out`, que é o que o DWC3 dá quando o gadget
+  tenta habilitar o `ep0out` com o controlador em modo *host*. O papel vem do
+  `dr_mode = "otg"` do `rk356x.dtsi` e, nessas placas, a detecção não resolve para
+  *device*.
+  - **Correção:** o build gera `dtbs/<dtb>-peripheral.dtb` com
+    `dr_mode = "peripheral"` no nó `usb@fcc00000` e a entrada
+    **`extlinux.conf.x35s` já aponta para ela**. Para voltar ao original existe
+    `extlinux.conf.x35s-otg`.
+  - O gerador **verifica no DTB final** que o `dr_mode` ficou `peripheral`; se não
+    ficou, avisa e cai no DTB original (não gera variante silenciosamente quebrada).
 - O gadget não faz DHCP — se o PC ficar em 169.254.x.x, é isso.
 
 ### 4.2.1 Áudio: mux tem que ficar em `HP` (não "conserte" isso)
@@ -281,3 +290,28 @@ dispare um commit vazio (`git commit --allow-empty`) para gerar a imagem.
   (`addon.xml` + `default.py`, registrado como `xbmc.python.script`).
 - Pendente / próximo: usuário gravar o #100 e testar Bluetooth pelo add-on e o teclado
   da senha na TV; depois confirmar o resto (áudio já confirmado nos dois caminhos).
+
+### 2026-10-24 — Copilot (X35H validada em hardware + correções de USB e rotação)
+
+- Fez: registrou o **primeiro teste de X35H em hardware**: vídeo 640x480 a **58,5 Hz**
+  em tela cheia, **áudio** e **botões/direcionais** funcionando. Só o **USB** ficou em
+  aberto.
+- **USB:** `failed to enable ep0out` é o DWC3 recusando o DEPCMD de ep0out porque o
+  controlador está em modo *host* (`dr_mode = "otg"` do `rk356x.dtsi`, e nessas placas a
+  detecção não resolve para *device*). O build agora gera `dtbs/<dtb>-peripheral.dtb`
+  com `dr_mode = "peripheral"` num **helper reutilizável** que **verifica o DTB final**
+  (não gera variante quebrada em silêncio) e a entrada `extlinux.conf.x35s` **já aponta
+  para ela**; `extlinux.conf.x35s-otg` volta ao original.
+- **Rotação (bug real):** o `walkmam.conf` saía sempre com `display_transform=rotate-90`,
+  obrigando a editar à mão para X35S/X35H. Agora o padrão é `auto` e o launcher escolhe
+  pelo `/proc/device-tree/model` (`*x55*` → `rotate-90`, resto → `normal`); valor
+  explícito continua vencendo. Testado com matriz de casos (auto/vazio/explícito).
+- **75 Hz (esclarecido):** não é limitação de hardware. O `panel-generic-dsi` só marca
+  como preferido o modo `M` com `default=1` (o de 58,5 fps), e o Kodi usa o preferido do
+  conector. Os 75,47 fps existem na lista mas marcados `(CAN FAIL)`. Para testar de
+  verdade é preciso gerar um DTB com esse modo como `default=1`.
+- Diagnóstico: `diagnostico.txt` agora traz o modelo do device tree, os modos DRM (o
+  primeiro é o preferido) e a rotação efetiva — responde "o 75 Hz aplicou?" e "qual DTB
+  está ativo".
+- Pendente / próximo: gerar a imagem e o usuário testar o SSH por USB na X35H; se o
+  `peripheral` não resolver, olhar o `diagnostico.txt` (campos `dr_mode` e `usb_role`).

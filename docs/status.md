@@ -147,9 +147,10 @@ aparelhos, trocando o `FDT` no `extlinux.conf`.
 | X55: rotação da interface | **confirmado no aparelho: `rotate-90`** (landscape 1280x720) |
 | USB gadget (ancoragem) no X55: rede `usb0` no PC | **confirmado** (10.55.0.1 responde e a porta 22 abre, verificado do PC em 2026-10-09) |
 | Login do root por senha no SSH | **era bloqueado** (`prohibit-password`); corrigido no #89 e **validado** |
-| `dr_mode = "peripheral"` faz a ancoragem USB funcionar | **hipótese** (testar `*peripheral`) |
+| `dr_mode = "peripheral"` faz a ancoragem USB funcionar | **hipótese forte** na X35S/X35H (o erro `failed to enable ep0out` é de controlador em modo host); X55 funciona com `otg` |
 | Sentido da rotação no X55 | **confirmado no aparelho: `rotate-90`** |
-| Contagem de botões/eixos na X35H | **não medido** |
+| Contagem de botões/eixos na X35H | **medido: botões e direcionais OK** (2026-10-24) |
+| X35H: vídeo, áudio e botões | **CONFIRMADO no aparelho (2026-10-24)**: 640x480 a 58,5 Hz em tela cheia, áudio e direcionais OK |
 | Áudio (I2S habilitado no #92) | **CONFIRMADO no aparelho (2026-10-24): som no jack 3,5 mm e no alto-falante interno**, com `rk817_ext`, `Playback Mux=HP` e detecção de jack por GPIO |
 | Wi-Fi RTL8821CS | **confirmado no #97**: `wlan0` sobe no boot sem retry (fix SDIO 0004 + `dma-names` uart1 no DTS) |
 | Bluetooth RTL8821CS | **confirmado em 2026-10-24**: faltava o `rtl8821cs_config.bin` com a entrada UART `0x0c`; o CI agora gera o arquivo → `hci0` com MAC real, `UP`, scan ok, e sobe no boot |
