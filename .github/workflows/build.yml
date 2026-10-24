@@ -533,6 +533,56 @@ jobs:
           sudo losetup -d "$LOOP_DEV"
         fi
 
+    - name: Preflight da variante (falha em segundos, sem compilar)
+      run: |
+        echo "--> Variante: $VARIANT"
+        if [ "$VARIANT" != "kodi" ] && [ "$VARIANT" != "retroarch" ]; then
+          echo "!!! variante desconhecida: $VARIANT" >&2
+          exit 1
+        fi
+        LISTA="variants/$VARIANT/packages/$VARIANT.list"
+        if [ ! -f "$LISTA" ]; then
+          echo "!!! manifesto de pacotes ausente: $LISTA" >&2
+          exit 1
+        fi
+
+        # Valida cada nome contra o indice da ARQUITETURA. Nao use
+        # packages.debian.org/<suite>/arm64/<pkg>: ele responde 200 mesmo
+        # quando o pacote nao existe para arm64, e isso ja custou um build.
+        echo "--> Baixando o indice arm64 do bookworm para validar $LISTA..."
+        curl -fsSL http://deb.debian.org/debian/dists/bookworm/main/binary-arm64/Packages.gz \
+          -o /tmp/pkgs-arm64.gz
+        gzip -dc /tmp/pkgs-arm64.gz | sed -n 's/^Package: //p' | sort -u > /tmp/pkgs-arm64.txt
+        echo "--> pacotes no indice: $(wc -l < /tmp/pkgs-arm64.txt)"
+
+        PACOTES=$(sed -e 's/#.*//' -e 's/[[:space:]]//g' "$LISTA" | grep -v '^$')
+        echo "--> pacotes pedidos: $(printf '%s\n' "$PACOTES" | wc -l)"
+        FALTANDO=0
+        for p in $PACOTES; do
+          if ! grep -qx "$p" /tmp/pkgs-arm64.txt; then
+            echo "!!! $p NAO existe para arm64 no bookworm (veja $LISTA)" >&2
+            FALTANDO=$((FALTANDO + 1))
+          fi
+        done
+        if [ "$FALTANDO" -gt 0 ]; then
+          echo "!!! $FALTANDO pacote(s) invalido(s) para arm64; abortando ANTES do build." >&2
+          exit 1
+        fi
+        echo "--> ok: todos os pacotes existem para arm64"
+
+        # Arquivos que o build vai instalar precisam existir no repositorio.
+        for f in \
+          "variants/$VARIANT/overlay/etc/systemd/system/$VARIANT.service" \
+          "variants/$VARIANT/overlay/usr/local/bin/start-$VARIANT"*.sh \
+        ; do
+          case "$f" in *'*'*) continue;; esac
+          if [ ! -e "$f" ]; then
+            echo "!!! esperado e nao encontrado: $f" >&2
+            exit 1
+          fi
+        done
+        echo "--> ok: arquivos da variante presentes"
+
     - name: Build Minimal RootFS (Debian ARM64)
       run: |
         LINUX_FW_TAG=20260309
