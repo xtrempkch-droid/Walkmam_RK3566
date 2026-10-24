@@ -5,12 +5,11 @@ está pronto, o que ainda é **hipótese** e exatamente o que testar e devolver.
 
 ## Como retomar (leia isto primeiro)
 
-> **Estado em 2026-10-23:** o X55 está **com o Kodi rodando** (imagem do #89) e o
-> **SSH/`usb0` funcionando**. A correção do socket do Weston (`--socket=wayland-0`) e a
-> do áudio (`SND_SOC_ROCKCHIP_I2S*` + `hdmi_sound` desligado) estão no `main`, mas os
-> runs #90/#91 **falharam por drift das fontes externas** (ROCKNIX master mudou). O CI
-> agora fixa U-Boot/ROCKNIX/rkbin por commit; gere um run novo e use o artifact verde
-> mais recente.
+> **Estado em 2026-10-24:** o **#92 está verde** e é a imagem a usar (352 MB). Ela
+> junta: boot ativo da X55 + `rotate-270`, **SSH root/root**, Kodi com
+> `--socket=wayland-0` (validado no X55: 2 h sem reiniciar) e **áudio I2S habilitado**
+> (ainda não testado no aparelho). Os #90/#91 falharam por drift das fontes externas
+> (ROCKNIX master mudou) — o CI agora fixa U-Boot/ROCKNIX/rkbin por commit.
 
 1. Pegue o artifact `rk3566-x55-mainline-sdcard-image` do **run verde (success) mais
    recente** em Actions. Ele traz: boot ativo da X55 (`display_transform=rotate-270`),
@@ -28,7 +27,7 @@ está pronto, o que ainda é **hipótese** e exatamente o que testar e devolver.
 
 | Run | Commit | Resultado | Observação |
 | --- | --- | --- | --- |
-| #92 | (fix de fontes) | **a confirmar** | fixa U-Boot/ROCKNIX/rkbin por commit |
+| #92 | `407fd46` (fix de fontes) | **success** | fixa U-Boot/ROCKNIX/rkbin; **use este artefato** (áudio incluído) |
 | #91 | `0a7ffb2` (áudio) | failure | ROCKNIX drift: patch X35S usa `&gpio_keys_control` (não existe no mainline 6.12) |
 | #90 | `da0073f` (Kodi) | failure | mesmo drift (não era o Kodi: kernel não compilava) |
 | #89 | `63f4bd7` (SSH) | **success** | imagem gravada e testada no X55; Kodi resolvido ao vivo |

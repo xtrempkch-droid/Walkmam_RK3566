@@ -168,5 +168,14 @@ caminho oficial; o rootfs Debian e a montagem da imagem exigem `sudo`.
   **reboot**: `kodi.service` ativo, Kodi em Wayland, `GUI format 720x1280`, `xdg_output`
   lógico 1280x720 (rotate-270). Também validado o **SSH root/root** e a rede USB
   (PC precisa de IP estático `10.55.0.2/24`; o gadget não faz DHCP).
-- **Próximos itens abertos:** áudio (sem sink), VA-API (`rockchip_drv_video.so` ausente)
-  e validar o **sentido visual** da rotação (`rotate-270` vs `rotate-90`).
+- **Áudio (2026-10-23/24):** o `sound` ficava em deferred probe porque o **I2S do
+  Rockchip** não estava no kernel (`# CONFIG_SND_SOC_ROCKCHIP`); o config da ROCKNIX
+  pedia o filho, mas o `olddefconfig` descartava. Habilitados
+  `SND_SOC_ROCKCHIP{,_I2S,_I2S_TDM}` + `&hdmi_sound` desligado junto com o HDMI.
+  **Build #92 verde** (352 MB) — instalar e testar o áudio no aparelho.
+- **Drift de fontes externas (2026-10-24):** os runs #90/#91 falharam porque o master da
+  ROCKNIX mudou (kernel 7.2, patch 0012 removido, 0016 usando `&gpio_keys_control`).
+  Agora U-Boot/ROCKNIX/rkbin estão **fixados por commit** e há guarda para `.rej`.
+- **Próximos itens abertos:** validar o **áudio** no #92, VA-API
+  (`rockchip_drv_video.so` ausente) e o **sentido visual** da rotação
+  (`rotate-270` vs `rotate-90`).
