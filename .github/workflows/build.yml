@@ -23,6 +23,14 @@ on:
 env:
   VARIANT: ${{ github.event.inputs.variant || (startsWith(github.ref, 'refs/tags/retroarch-') && 'retroarch') || 'kodi' }}
 
+# Um build por referencia: push novo na main cancela o anterior em vez de rodar
+# dois kernels em paralelo (cada run leva ~40 min e o runner e o mesmo). Tags
+# sao refs diferentes, entao o build da variante retroarch nao e cancelado por
+# um push na main.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-os:
     runs-on: ubuntu-latest
