@@ -6,13 +6,13 @@ está pronto, o que ainda é **hipótese** e exatamente o que testar e devolver.
 ## Como retomar (leia isto primeiro)
 
 > **Estado em 2026-10-24:** o **#92 está verde** e é a imagem a usar (352 MB). Ela
-> junta: boot ativo da X55 + `rotate-270`, **SSH root/root**, Kodi com
+> junta: boot ativo da X55 + `rotate-90` (validado), **SSH root/root**, Kodi com
 > `--socket=wayland-0` (validado no X55: 2 h sem reiniciar) e **áudio I2S habilitado**
 > (ainda não testado no aparelho). Os #90/#91 falharam por drift das fontes externas
 > (ROCKNIX master mudou) — o CI agora fixa U-Boot/ROCKNIX/rkbin por commit.
 
 1. Pegue o artifact `rk3566-x55-mainline-sdcard-image` do **run verde (success) mais
-   recente** em Actions. Ele traz: boot ativo da X55 (`display_transform=rotate-270`),
+   recente** em Actions. Ele traz: boot ativo da X55 (`display_transform=rotate-90`),
    **SSH com senha liberado**, Kodi com `--socket=wayland-0`, áudio (I2S) habilitado e
    os logs de diagnóstico. **Não** use runs com `failure`.
 2. Grave no cartão, ligue o cabo USB e faça os testes da seção **"Testes a fazer"**.
@@ -32,7 +32,7 @@ está pronto, o que ainda é **hipótese** e exatamente o que testar e devolver.
 | #90 | `da0073f` (Kodi) | failure | mesmo drift (não era o Kodi: kernel não compilava) |
 | #89 | `63f4bd7` (SSH) | **success** | imagem gravada e testada no X55; Kodi resolvido ao vivo |
 | #88 | `84b38ea` (diagnóstico) | **success** | Kodi/USB diagnosticáveis + variante `x55-peripheral` |
-| #87 | `e30e6`/`e430e61` (fix X55) | **success** | boot ativo da X55 + `rotate-270` |
+| #87 | `e30e6`/`e430e61` (fix X55) | **success** | boot ativo da X55 + `rotate-90` |
 | #84 | `836f3b5` (fix) | **success** | imagem antiga (bootava com DTB da X35S) |
 | #83 | `664b057` (docs) | failure | bug de aspas do #82; ignorar |
 | #82 | `68c5c77` (merge USB) | failure | bug de aspas no `build.yml` |
@@ -77,7 +77,7 @@ aparelhos, trocando o `FDT` no `extlinux.conf`.
   (`dtbs/rk3566-powkiddy-x35s-rocknix.dtb`, oficial da ROCKNIX com HDMI desabilitado, ou
   `dtbs/rk3566-powkiddy-x35s-nosso.dtb`, o nosso compilado). Se o DTB da X55 não for
   gerado, o step falha em vez de criar uma imagem com o FDT ausente.
-- **`walkmam.conf`** na raiz da partição FAT, com `display_transform=rotate-270` (X55).
+- **`walkmam.conf`** na raiz da partição FAT, com `display_transform=rotate-90` (X55).
   Para X35S/X35H, troque para `normal`.
 - **Entradas de boot alternativas** (presentes, mas não ativas) na pasta `extlinux/` da
   partição FAT:
@@ -103,6 +103,14 @@ aparelhos, trocando o `FDT` no `extlinux.conf`.
   `PasswordAuthentication yes` (o Debian 12 bloqueia login do root por senha por
   padrão — sem esse drop-in, `root:root` é recusado). Pelo cabo USB o aparelho fica
   em **10.55.0.1**. Ver "Segurança" no `docs/roadmap.md`.
+- **Painel web de Wi-Fi/Bluetooth:** `walkmam-webui.service` (busybox httpd) na porta
+  **8080**, servindo `variants/kodi/overlay/usr/local/share/walkmam-webui/`. Acesse
+  `http://10.55.0.1:8080` pelo cabo (ou pelo IP do Wi-Fi) para procurar/conectar redes
+  e parear dispositivos Bluetooth — o Kodi em si não gerencia rádio.
+  Wi-Fi usa `nmcli`/`wpa_supplicant`; BT usa `bluetoothctl`/`bluez`.
+- **Firmware de rádio:** o CI baixa do `linux-firmware` (tag **20260309**, sha256
+  conferido) `rtw88/rtw8821c_fw.bin`, `rtl_bt/rtl8821cs_fw.bin` e a config do 8821C
+  renomeada para `rtl8821cs_config.bin`.
 
 ## Confirmado x hipótese
 
@@ -114,13 +122,17 @@ aparelhos, trocando o `FDT` no `extlinux.conf`.
 | Weston com `drm-backend.so` + `kiosk-shell` | **confirmado** |
 | Kodi do Debian bookworm é 20.1 **com Wayland** (`BUILD_WAYLAND=yes`) | **confirmado (código)** |
 | X55: Kodi inicia e mostra a interface | **RESOLVIDO** (Weston criava `wayland-1`; corrigido com `--socket=wayland-0`) |
-| X55: rotação da interface (landscape 1280x720) | **confirmado** (`xdg_output`; falta só validar o sentido visual) |
+| X55: rotação da interface | **confirmado no aparelho: `rotate-90`** (landscape 1280x720) |
 | USB gadget (ancoragem) no X55: rede `usb0` no PC | **confirmado** (10.55.0.1 responde e a porta 22 abre, verificado do PC em 2026-10-09) |
 | Login do root por senha no SSH | **era bloqueado** (`prohibit-password`); corrigido no #89 e **validado** |
 | `dr_mode = "peripheral"` faz a ancoragem USB funcionar | **hipótese** (testar `*peripheral`) |
-| Sentido da rotação no X55 (`rotate-270` padrão; alternativo `rotate-90`) | **não validado** |
+| Sentido da rotação no X55 | **confirmado no aparelho: `rotate-90`** |
 | Contagem de botões/eixos na X35H | **não medido** |
-| Áudio (`asoc-simple-card: parse error`) e vídeo (`va_openDriver() returns -1`) | **aberto** |
+| Áudio (I2S habilitado no #92) | **a validar** no aparelho |
+| Wi-Fi RTL8821CS: driver + firmware + `wpa_supplicant` | **validado ao vivo** (`wlan0`, fw 24.11.0); conexão a testar |
+| Bluetooth RTL8821CS: `hci0` + firmware carregado | **validado ao vivo**; pareamento a testar |
+| Painel web de Wi-Fi/BT na porta 8080 | **implementado** (validar na próxima imagem) |
+| Vídeo por hardware (`va_openDriver() returns -1`) | **aberto** |
 
 ## Testes a fazer (na ordem)
 
@@ -134,7 +146,7 @@ Causa raiz confirmada no aparelho: o **Weston 10.0.1 criava o socket como
 `xdg_output` lógico **1280x720** (landscape).
 
 **Falta só a confirmação visual:** se a imagem estiver de cabeça para baixo, troque
-`display_transform` em `walkmam.conf` para `rotate-90` (já está `rotate-270`).
+`display_transform` em `walkmam.conf` para `rotate-270` (já está `rotate-90`, validado).
 
 ### 1. USB gadget na X35H (prioridade)
 
@@ -165,7 +177,7 @@ do `diagnostico.txt`, que traz o `dr_mode` do device tree em uso.
 ### 2. Rotação da tela no X55
 
 1. Não precisa copiar `extlinux.conf`: a imagem já sai com o DTB da X55 **e** a rotação
-   da X55 (`display_transform=rotate-270`) ativos.
+   da X55 (`display_transform=rotate-90`) ativos.
 2. Se a interface ficar de cabeça para baixo, edite `walkmam.conf` na partição FAT e
    troque para `display_transform=rotate-90`.
 3. Me diga **qual valor deixa a interface correta** e, se possível, mande o trecho do
@@ -204,7 +216,7 @@ compilação; o `diagnostico.txt` mostra o que aconteceu no aparelho.
    `dr_mode`). **Não refiz o build só por isso**, para não trocar o artefato que você vai
    baixar; se mexer nisso, gere um run novo e use o artefato do run mais recente.
 2. O `build.yml` ainda monta a imagem **inline** (não usa o `build/create-image.sh`).
-   Duplicação pendente; a rotação já não depende disso (o CI grava `rotate-270` para a
+   Duplicação pendente; a rotação já não depende disso (o CI grava `rotate-90` para a
    X55, e o `create-image.sh` lê `display_transform` de `device.conf`).
 3. ~~Mover o padrão de rotação do `case` do `create-image.sh` para `display_transform=`
    em `devices/<placa>/device.conf`.~~ **Feito:** `devices/*/device.conf` tem

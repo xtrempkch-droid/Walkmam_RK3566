@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Walkmam — Wi-Fi e Bluetooth</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 20px; background: #111; color: #eee; }
+  h1 { font-size: 1.3rem; margin: 0 0 4px; }
+  .sub { color: #999; font-size: .85rem; margin-bottom: 18px; }
+  section { background: #1b1b1b; border: 1px solid #2a2a2a; border-radius: 10px; padding: 14px; margin-bottom: 16px; }
+  h2 { font-size: 1rem; margin: 0 0 10px; }
+  button { background: #2d6cdf; color: #fff; border: 0; border-radius: 6px; padding: 7px 12px; font-size: .9rem; cursor: pointer; }
+  button.alt { background: #333; }
+  button:disabled { opacity: .5; cursor: default; }
+  input { background: #0d0d0d; color: #eee; border: 1px solid #333; border-radius: 6px; padding: 7px; font-size: .9rem; }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  td, th { text-align: left; padding: 6px 4px; border-bottom: 1px solid #262626; }
+  th { color: #888; font-weight: 500; }
+  .muted { color: #888; }
+  .ok { color: #4ade80; }
+  .err { color: #f87171; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  pre { white-space: pre-wrap; font-size: .8rem; color: #aaa; background: #0d0d0d; padding: 8px; border-radius: 6px; }
+</style>
+</head>
+<body>
+<h1>Walkmam — Wi-Fi e Bluetooth</h1>
+<div class="sub">Painel local do aparelho. Funciona pelo cabo USB (10.55.0.1) ou pela rede Wi-Fi.</div>
+
+<section>
+  <h2>Wi-Fi</h2>
+  <div class="row" style="margin-bottom:10px">
+    <span id="wifi-status" class="muted">carregando…</span>
+    <button class="alt" onclick="wifiAction('disconnect')">Desconectar</button>
+    <button onclick="scanWifi()">Procurar redes</button>
+  </div>
+  <table>
+    <thead><tr><th>Rede</th><th>Sinal</th><th>Segurança</th><th></th></tr></thead>
+    <tbody id="wifi-list"><tr><td colspan="4" class="muted">Clique em “Procurar redes”.</td></tr></tbody>
+  </table>
+  <div id="wifi-msg" style="margin-top:8px"></div>
+</section>
+
+<section>
+  <h2>Bluetooth</h2>
+  <div class="row" style="margin-bottom:10px">
+    <span id="bt-status" class="muted">carregando…</span>
+    <button class="alt" onclick="btPower(1)">Ligar</button>
+    <button class="alt" onclick="btPower(0)">Desligar</button>
+    <button onclick="scanBt()">Procurar dispositivos</button>
+  </div>
+  <table>
+    <thead><tr><th>Dispositivo</th><th>MAC</th><th></th></tr></thead>
+    <tbody id="bt-list"><tr><td colspan="3" class="muted">Clique em “Procurar dispositivos”.</td></tr></tbody>
+  </table>
+  <div id="bt-msg" style="margin-top:8px"></div>
+</section>
+
+<script>
+const api = async (path, params) => {
+  const body = new URLSearchParams(params || {});
+  const r = await fetch('cgi-bin/' + path, { method: 'POST', body });
+  return r.json();
+};
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+async function refreshWifi() {
+  const el = document.getElementById('wifi-status');
+  try {
+    const d = await api('wifi.sh', { action: 'status' });
+    const state = d.state || '?';
+    el.innerHTML = d.state === 'connected'
+      ? `<span class="ok">conectado</span> — ${esc(d.connection)} ${d.ip ? '· ' + esc(d.ip) : ''}`
+      : `<span class="muted">${esc(state)}</span>`;
+  } catch (e) { el.textContent = 'erro ao consultar'; }
+}
+
+async function scanWifi() {
+  const tb = document.getElementById('wifi-list');
+  const msg = document.getElementById('wifi-msg');
+  tb.innerHTML = '<tr><td colspan="4" class="muted">procurando…</td></tr>';
+  msg.textContent = '';
+  const nets = await api('wifi.sh', { action: 'scan' });
+  if (!Array.isArray(nets) || !nets.length) {
+    tb.innerHTML = '<tr><td colspan="4" class="muted">nenhuma rede encontrada</td></tr>';
+    return;
+  }
+  tb.innerHTML = '';
+  for (const n of nets.sort((a, b) => b.signal - a.signal)) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${esc(n.ssid)}</td><td>${n.signal}%</td><td>${esc(n.security || 'aberta')}</td>
+      <td><button data-ssid="${esc(n.ssid)}">Conectar</button></td>`;
+    tr.querySelector('button').onclick = () => connectWifi(n.ssid, n.security);
+    tb.appendChild(tr);
+  }
+}
+
+async function connectWifi(ssid, security) {
+  const msg = document.getElementById('wifi-msg');
+  let password = '';
+  if (security && security !== '' && security !== '--') {
+    password = prompt(`Senha do Wi-Fi "${ssid}":`) || '';
+    if (!password) return;
+  }
+  msg.innerHTML = '<span class="muted">conectando…</span>';
+  const d = await api('wifi.sh', { action: 'connect', ssid, password });
+  msg.innerHTML = d.ok ? `<span class="ok">${esc(d.message || 'conectado')}</span>`
+                       : `<span class="err">${esc(d.message || d.error)}</span>`;
+  refreshWifi();
+}
+
+async function wifiAction(action) {
+  const msg = document.getElementById('wifi-msg');
+  const d = await api('wifi.sh', { action });
+  msg.innerHTML = d.ok ? `<span class="ok">${esc(d.message || 'ok')}</span>`
+                       : `<span class="err">${esc(d.message || d.error)}</span>`;
+  refreshWifi();
+}
+
+async function refreshBt() {
+  const el = document.getElementById('bt-status');
+  try {
+    const d = await api('bt.sh', { action: 'status' });
+    el.innerHTML = d.powered ? `<span class="ok">ligado</span> ${d.name ? '— ' + esc(d.name) : ''}`
+                             : '<span class="muted">desligado</span>';
+  } catch (e) { el.textContent = 'erro ao consultar'; }
+}
+
+async function scanBt() {
+  const tb = document.getElementById('bt-list');
+  tb.innerHTML = '<tr><td colspan="3" class="muted">procurando (8s)…</td></tr>';
+  const devs = await api('bt.sh', { action: 'scan' });
+  if (!Array.isArray(devs) || !devs.length) {
+    tb.innerHTML = '<tr><td colspan="3" class="muted">nenhum dispositivo</td></tr>';
+    return;
+  }
+  tb.innerHTML = '';
+  for (const d of devs) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${esc(d.name || '(sem nome)')}</td><td>${esc(d.mac)}</td>
+      <td><button>Parear</button></td>`;
+    tr.querySelector('button').onclick = async () => {
+      const msg = document.getElementById('bt-msg');
+      msg.innerHTML = '<span class="muted">pareando…</span>';
+      const r = await api('bt.sh', { action: 'pair', mac: d.mac });
+      msg.innerHTML = `<span class="${r.ok ? 'ok' : 'err'}">${esc(r.message || r.error)}</span>`;
+      refreshBt();
+    };
+    tb.appendChild(tr);
+  }
+}
+
+async function btPower(on) {
+  const msg = document.getElementById('bt-msg');
+  const r = await api('bt.sh', { action: 'power', on });
+  msg.textContent = r.message || '';
+  refreshBt();
+}
+
+refreshWifi();
+refreshBt();
+</script>
+</body>
+</html>

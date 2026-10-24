@@ -153,7 +153,7 @@ if [[ -z $DISPLAY_TRANSFORM ]]; then
         powkiddy-x55)
             # Painel 720x1280 (retrato) em aparelho horizontal. Sentido NÃO validado
             # no hardware: se a imagem sair de cabeça para baixo, troque por rotate-90.
-            DISPLAY_TRANSFORM=rotate-270
+            DISPLAY_TRANSFORM=rotate-90
             ;;
         powkiddy-x35s|powkiddy-x35h)
             # Painel 640x480 com rotation = <0> no DTS; mesmo DTB nos dois.

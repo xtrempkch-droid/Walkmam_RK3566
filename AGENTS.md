@@ -42,13 +42,14 @@ tools/             utilitários auxiliares
 | Item | Estado |
 | --- | --- |
 | Boot, U-Boot, painel (display liga), Debian | **confirmado em hardware** |
-| X55: boot ativo com o DTB da X55 + `display_transform=rotate-270` | **implementado** (runs #87/#88) |
+| X55: boot ativo com o DTB da X55 + `display_transform=rotate-90` | **implementado** (runs #87/#88) |
 | X35S/X35H: usam o **mesmo** DTB (`rk3566-powkiddy-x35s.dts` faz `#include` do X55) | confirmado no código |
 | `rocknix-joypad` (17 botões / 4 eixos) + mapa do Kodi | confirmado no X55 (teste anterior) |
 | **X55: Kodi não inicia — a tela fica em loop** | **RESOLVIDO** (Weston 10 criava `wayland-1`; `--socket=wayland-0`) |
 | X55: ancoragem USB + SSH (`root`/`root` em 10.55.0.1) | **confirmado** (PC precisa de IP estático 10.55.0.2/24) |
 | X35H: ancoragem USB | **aberto** (`failed to enable ep0out`) |
-| Sentido da rotação no X55 (`rotate-270` ou `rotate-90`) | **não validado** |
+| Sentido da rotação no X55 | **confirmado no aparelho: `rotate-90`** |
+| Wi-Fi/BT RTL8821CS | **firmware validado ao vivo** (`wlan0`, `hci0`); painel web na :8080 |
 | Áudio (`asoc-simple-card: parse error`) e vídeo VA-API | **aberto** |
 
 Detalhes e histórico completo: [`docs/status.md`](docs/status.md) e
@@ -146,7 +147,7 @@ caminho oficial; o rootfs Debian e a montagem da imagem exigem `sudo`.
 
 - Fez: corrigiu a regressão de "sem imagem" (o boot ativo usava o DTB da X35S; agora
   usa o DTB da X55, com o DTB da X35S/X35H em `extlinux/extlinux.conf.x35s`); criou
-  `display_transform` por `device.conf` (X55 `rotate-270`, X35S/X35H `normal`); o
+  `display_transform` por `device.conf` (X55 `rotate-90`, X35S/X35H `normal`); o
   `build.sh`/`create-image.sh` gravam `walkmam.conf`. Submeteu ao `main` e o build
   **#87** passou.
 - Fez também: melhorou o diagnóstico de USB/Kodi (role/UDC, `kodi-start.log`,
@@ -166,16 +167,22 @@ caminho oficial; o rootfs Debian e a montagem da imagem exigem `sudo`.
   launcher esperava `wayland-0`, matando o Weston após 30 s. Correção:
   `weston --socket=wayland-0` explícito + 3 s antes do fallback GBM. Confirmedo com
   **reboot**: `kodi.service` ativo, Kodi em Wayland, `GUI format 720x1280`, `xdg_output`
-  lógico 1280x720 (rotate-270). Também validado o **SSH root/root** e a rede USB
+  lógico 1280x720 (`rotate-90` validado no aparelho). Também validado o **SSH root/root** e a rede USB
   (PC precisa de IP estático `10.55.0.2/24`; o gadget não faz DHCP).
 - **Áudio (2026-10-23/24):** o `sound` ficava em deferred probe porque o **I2S do
   Rockchip** não estava no kernel (`# CONFIG_SND_SOC_ROCKCHIP`); o config da ROCKNIX
   pedia o filho, mas o `olddefconfig` descartava. Habilitados
   `SND_SOC_ROCKCHIP{,_I2S,_I2S_TDM}` + `&hdmi_sound` desligado junto com o HDMI.
   **Build #92 verde** (352 MB) — instalar e testar o áudio no aparelho.
+- **Wi-Fi/Bluetooth (2026-10-24):** faltavam firmware (`rtw88/rtw8821c_fw.bin`,
+  `rtl_bt/rtl8821cs_fw.bin`+config), `wpa_supplicant` (sem ele o NM deixa `wlan0`
+  `unavailable`) e BlueZ. Validado ao vivo após copiar os firmwares: `wlan0` (fw
+  24.11.0) e `hci0` sobem. A imagem agora baixa os firmwares (tag 20260309, sha256) e
+  instala `wpasupplicant iw wireless-tools rfkill bluez busybox`, além do **painel web
+  na porta 8080** (`walkmam-webui.service`) para gerenciar Wi-Fi/BT.
 - **Drift de fontes externas (2026-10-24):** os runs #90/#91 falharam porque o master da
   ROCKNIX mudou (kernel 7.2, patch 0012 removido, 0016 usando `&gpio_keys_control`).
   Agora U-Boot/ROCKNIX/rkbin estão **fixados por commit** e há guarda para `.rej`.
 - **Próximos itens abertos:** validar o **áudio** no #92, VA-API
   (`rockchip_drv_video.so` ausente) e o **sentido visual** da rotação
-  (`rotate-270` vs `rotate-90`).
+  (`rotate-90` validado).

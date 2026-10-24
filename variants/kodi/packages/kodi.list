@@ -11,3 +11,9 @@ evtest
 alsa-utils
 dbus
 ca-certificates
+wpasupplicant
+iw
+wireless-tools
+rfkill
+bluez
+busybox

@@ -1,0 +1,13 @@
+[Unit]
+Description=Walkmam Web UI (Wi-Fi/Bluetooth) na porta 8080
+After=NetworkManager.service bluetooth.service
+
+[Service]
+Type=simple
+# busybox httpd: serve estaticos e executa cgi-bin/*.
+ExecStart=/usr/bin/busybox httpd -f -p 0.0.0.0:8080 -h /usr/local/share/walkmam-webui
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

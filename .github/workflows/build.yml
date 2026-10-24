@@ -489,6 +489,7 @@ jobs:
 
     - name: Build Minimal RootFS (Debian ARM64)
       run: |
+        LINUX_FW_TAG=20260309
         echo "--> Criando RootFS base Debian ARM64..."
         sudo debootstrap --arch=arm64 --foreign bookworm rootfs http://deb.debian.org/debian/
         sudo cp /usr/bin/qemu-aarch64-static rootfs/usr/bin/
@@ -500,10 +501,38 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             systemd-sysv udev ifupdown network-manager \
-            openssh-server sudo nano
+            openssh-server sudo nano \
+            wpasupplicant iw wireless-tools rfkill bluez busybox
           echo "root:root" | chpasswd
           echo "rk3566-x55" > /etc/hostname
         '
+
+        echo "--> Firmwares do Wi-Fi/BT do X55 (RTL8821CS)."
+        echo "--> O kernel pede rtw88/rtw8821c_fw.bin e rtl_bt/rtl8821cs_fw.bin."
+        echo "--> Nao vem no Debian: baixamos do linux-firmware, fixado na tag $LINUX_FW_TAG,"
+        echo "--> e conferimos o sha256. O upstream nao tem rtl8821cs_config.bin; o proprio"
+        echo "--> driver aceita a config do 8821C (avisa 'no UART config entry found')."
+        FW_BASE="https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain"
+        fetch_fw() {
+          url=$1; dest=$2; want=$3
+          curl -fsSL "$url" -o /tmp/fwfile
+          got=$(sha256sum /tmp/fwfile | cut -d" " -f1)
+          if [ "$got" != "$want" ]; then
+            echo "!!! sha256 inesperado para $dest: $got (esperado $want)" >&2
+            exit 1
+          fi
+          sudo install -D -m 0644 /tmp/fwfile "rootfs/lib/firmware/$dest"
+          echo "--> $dest ok"
+        }
+        fetch_fw "$FW_BASE/rtw88/rtw8821c_fw.bin?h=$LINUX_FW_TAG" \
+          rtw88/rtw8821c_fw.bin 2ef409bc418549fcf294061dd0cae1fc22fd9da79b60524950b25de18732f3f0
+        fetch_fw "$FW_BASE/rtl_bt/rtl8821cs_fw.bin?h=$LINUX_FW_TAG" \
+          rtl_bt/rtl8821cs_fw.bin 3baa2eeaa43c959054687a67771e7435e73b2ff3e79dfb765121d8b7dc719391
+        fetch_fw "$FW_BASE/rtl_bt/rtl8821c_config.bin?h=$LINUX_FW_TAG" \
+          rtl_bt/rtl8821cs_config.bin 292717b0610ce920f66b734c299d349ea59a4c4400044078d8fc65625f17e382
+
+        echo "--> Habilitando bluetooth e o painel web de gerenciamento (Wi-Fi/BT)..."
+        sudo chroot rootfs systemctl enable bluetooth.service
 
         echo "--> Liberando login do root por senha no SSH."
         echo "--> (O Debian 12 vem com 'PermitRootLogin prohibit-password': sem isto,"
@@ -629,6 +658,30 @@ jobs:
 
         echo "--> Criando serviço Kodi em Weston/Wayland sobre DRM no tty1..."
         sudo chroot rootfs systemctl enable kodi.service
+
+        echo "--> Instalando o painel web (Wi-Fi/Bluetooth) na porta 8080..."
+        echo "--> O Kodi não gerencia rádio; o painel fica acessível em"
+        echo "--> http://10.55.0.1:8080 (cabo) ou no IP do Wi-Fi, sem sair do Kodi."
+        sudo install -D -m 0644 \
+          variants/kodi/overlay/usr/local/share/walkmam-webui/index.html \
+          rootfs/usr/local/share/walkmam-webui/index.html
+        for cgi in wifi.sh bt.sh; do
+          sudo install -D -m 0755 \
+            "variants/kodi/overlay/usr/local/share/walkmam-webui/cgi-bin/$cgi" \
+            "rootfs/usr/local/share/walkmam-webui/cgi-bin/$cgi"
+        done
+        sudo install -D -m 0644 \
+          variants/kodi/overlay/etc/systemd/system/walkmam-webui.service \
+          rootfs/etc/systemd/system/walkmam-webui.service
+        sudo chroot rootfs systemctl enable walkmam-webui.service
+
+        echo "--> Conferindo se os binários que o painel usa entraram no rootfs..."
+        for bin in /usr/bin/busybox /usr/sbin/wpa_supplicant /usr/bin/nmcli /usr/bin/bluetoothctl /usr/sbin/rfkill; do
+          if [ ! -x "rootfs$bin" ]; then
+            echo "!!! faltando no rootfs: $bin" >&2
+            exit 1
+          fi
+        done
 
         echo "--> Instalando módulos do kernel no RootFS..."
         cd kernel
@@ -775,7 +828,7 @@ jobs:
         #                    flipped | flipped-rotate-90 | flipped-rotate-180 | flipped-rotate-270
         # X55 (painel 720x1280 montado deitado): rotate-270.
         # X35S/X35H (painel 640x480): normal.
-        display_transform=rotate-270
+        display_transform=rotate-90
         WALKMAMCONF
 
         echo "--> Criando extlinux.conf ativo para a Powkiddy X55 (aparelho em teste)..."

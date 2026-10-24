@@ -58,8 +58,8 @@ histórico `transform=270` era inválido (o Weston aceita `rotate-270`, não `27
 e foi retirado. O terminal permanece sob a orientação existente do framebuffer.
 Como isso adiciona uma etapa de composição, a orientação e a reprodução de vídeo
 acelerada precisam ser confirmadas no aparelho antes de considerar a rotação
-concluída. O sentido correto no X55 (`rotate-90` ou `rotate-270`) ainda não foi
-validado; a imagem grava `rotate-270` para o X55 (`display_transform` em
+concluída. O sentido correto no X55 foi **validado no aparelho: `rotate-90`**;
+a imagem grava `rotate-90` para o X55 (`display_transform` em
 `devices/powkiddy-x55/device.conf`, no `create-image.sh`) e `normal` para X35S/X35H.
 
 O primeiro diagnóstico da v6 mostra `kodi.service` encerrando com status 1

@@ -12,7 +12,7 @@ Feito nesta rodada (ainda sem teste em hardware):
   (partição FAT, editável no PC), valida contra os 8 valores do Weston, gera o
   `weston.ini` em `$XDG_RUNTIME_DIR` e avisa no journal se o valor for inválido.
 - `build/create-image.sh` grava o `walkmam.conf` com o padrão do aparelho: `normal`
-  para X35S/X35H, `rotate-270` para o X55 (sentido não validado).
+  para X35S/X35H, `rotate-90` para o X55 (validado no aparelho).
 - Removido o `dr_mode = "peripheral"` que o workflow forçava só nos DTBs da X35S (era
   a única diferença de USB para o X55, onde o gadget funciona); a imagem passou a
   oferecer também um DTB alternativo com `peripheral`
@@ -23,11 +23,11 @@ Feito nesta rodada (ainda sem teste em hardware):
 Falta:
 
 - Fazer o workflow usar o `create-image.sh` (hoje a imagem é montada inline — ela já
-  grava o `walkmam.conf`, mas com `normal` fixo, então o X55 não recebe `rotate-270`
+  grava o `walkmam.conf`, mas com `normal` fixo, então o X55 não recebe `rotate-90`
   automaticamente).
 - Mover o padrão do `case` do `create-image.sh` para `display_transform=` no
   `device.conf` de cada aparelho.
-- No X55, testar `rotate-270` e `rotate-90` editando o `walkmam.conf` e registrar qual
+- No X55, a rotação `rotate-90` foi validada no aparelho (editando o `walkmam.conf`)
   deixa a interface correta.
 - O mapa de botões do Kodi vira um arquivo por contagem de botões e eixos.
 
@@ -69,7 +69,7 @@ forçar `dr_mode = "peripheral"` nos DTBs da X35S — removido nesta rodada.
   para o FDT; vale estender ao driver do painel e ao do joypad). Há também guarda
   contra patch de DTS rejeitado (`.rej`).
 - Usar o `build/create-image.sh` no workflow, em vez de manter a montagem da imagem
-  duplicada dentro do YAML (isso também faz o X55 receber `rotate-270` automático).
+  duplicada dentro do YAML (isso também faz o X55 receber `rotate-90` automático).
 - Dar nome ao artifact pelo aparelho (`rk3566-<device>-<variant>`).
 - Reduzir o que o `diagnostico.txt` despeja, ou limitar o tamanho do arquivo.
 - Corrigir o dump do nó USB no log do CI: usa `grep -A5` e não imprime o `dr_mode`.

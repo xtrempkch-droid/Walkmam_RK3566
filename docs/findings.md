@@ -123,7 +123,7 @@ hipótese como fato ao portar outra placa.
   GBM então falhava (`Unable to create GUI`) porque o DRM ainda estava sendo liberado.
   Correção: `weston --socket=wayland-0` explícito + 3 s de espera antes do GBM.
   Validado com reboot: `kodi.service` ativo, Weston + Kodi em Wayland, `GUI format
-  720x1280` e `xdg_output` lógico **1280x720** (rotação `rotate-270` aplicada).
+  720x1280` e `xdg_output` lógico **1280x720** (rotação `rotate-90` aplicada e validada).
 - **`transform=270` é inválido no Weston.** As man pages do Weston (`weston.ini(5)` e
   `weston-drm(7)`) listam só `normal`, `rotate-90`, `rotate-180`, `rotate-270` e as
   variantes `flipped-*`. O `weston.ini` do repo usava `transform=270`. O efeito exato
@@ -138,8 +138,35 @@ hipótese como fato ao portar outra placa.
   (Uma afirmação anterior deste projeto, de que a X35S precisaria de rotação própria
   por ser "vertical", não tem base e foi retirada.)
 - **X55:** painel 720x1280 (retrato) com orientação DRM `left-up`. O sentido correto
-  em nomenclatura do Weston (`rotate-90` ou `rotate-270`) **não foi validado**; por isso
+  em nomenclatura do Weston **foi validado no aparelho: `rotate-90`**; por isso
   o valor é editável em `/boot/walkmam.conf` (ver `build.md`).
+
+## Wi-Fi e Bluetooth (RTL8821CS) — confirmado em 2026-10-24
+
+- **Hardware:** Wi-Fi é SDIO no `sdmmc1` (mmc3) e o Bluetooth é UART no `uart1`
+  (`compatible = "realtek,rtl8821cs-bt"`). Os drivers do kernel já vinham certos:
+  `RTW88_8821CS`, `BT_HCIUART_RTL`/`btrtl`, `RFKILL` (todos `=m` no config da ROCKNIX).
+- **O que faltava (confirmado no aparelho):**
+  1. **firmware** — `rtw88/rtw8821c_fw.bin` (Wi-Fi) e `rtl_bt/rtl8821cs_fw.bin` +
+     `rtl8821cs_config.bin` (BT). Sem eles o kernel registra
+     `Direct firmware load ... failed with error -2` e não cria `wlan0`/`hci0` utilizável.
+  2. **`wpa_supplicant`** — sem ele o NetworkManager deixa `wlan0` em
+     `unavailable` ("Scanning not allowed while unavailable").
+  3. **BlueZ** (`bluetoothctl`, `bluetooth.service`) — não estava instalado, então não
+     havia como parear/gerenciar nada.
+- **Onde os firmwares estão:** o Debian não os traz no rootfs mínimo; o CI baixa do
+  `linux-firmware` na tag **20260309** (a mesma que a ROCKNIX usa) com **sha256
+  conferido** e instala em `/lib/firmware`. O upstream **não tem**
+  `rtl8821cs_config.bin`; usamos a config do 8821C (10 bytes) com o nome esperado pelo
+  driver — o kernel avisa `no UART config entry found`, mas carrega o firmware.
+- **Teste ao vivo (validado):** copiando os firmwares para `/lib/firmware` e
+  recarregando os módulos, apareceram `wlan0` (`Firmware version 24.11.0`) e `hci0`
+  (firmware + config carregados). O scan de Wi-Fi só funciona depois de instalar o
+  `wpa_supplicant`.
+- **Gerenciamento:** o Kodi não gerencia rádio. O projeto instala um **painel web**
+  (`walkmam-webui.service`, busybox httpd na porta **8080**) com scan/conexão de Wi-Fi
+  (`nmcli`) e scan/pareamento de Bluetooth (`bluetoothctl`). Acesse
+  `http://10.55.0.1:8080` pelo cabo ou no IP do Wi-Fi.
 
 ## Itens que apareceram nos logs e ainda não foram tratados
 
