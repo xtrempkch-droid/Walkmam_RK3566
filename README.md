@@ -2,12 +2,16 @@
 
 Sistema Linux para media players RK3566, com foco inicial nos handhelds Powkiddy X55, X35S e X35H.
 
-> **Status (2026-10-24):** variante **`kodi` (multimídia)** validada no **X55** e no
-> **X35H** (vídeo, áudio, botões, Wi-Fi/Bluetooth no X55). Variante **`retroarch`
-> (jogos)** com código completo, mas o build ainda não fechou — ver
-> [docs/status.md](docs/status.md), seção "Ponto de retomada".
+> **Status (2026-10-24):** duas variantes, ambas compilando.
+> - **`kodi` (multimídia)** — build **#115**, validada em hardware no **X55** (vídeo,
+>   áudio, botões, Wi-Fi, Bluetooth, USB) e no **X35H** (vídeo, áudio, botões).
+> - **`retroarch` (jogos)** — build **#116**, imagem pronta (536 MB), **ainda não
+>   testada no aparelho**. Checklist do teste em [docs/status.md](docs/status.md).
 
-> **Status:** em desenvolvimento. O workflow em `.github/workflows/build.yml` mantém o build existente com U-Boot, Linux v6.12, ROCKNIX, Debian ARM64 e Kodi/GBM. X55 tem device tree mainline; X35S continua em investigação e X35H não possui configuração de build independente validada.
+> **Status técnico:** em desenvolvimento. O workflow em `.github/workflows/build.yml`
+> mantém o build existente com U-Boot, Linux v6.12, ROCKNIX, Debian ARM64 e Kodi/GBM.
+> X55 tem device tree mainline; X35S continua em investigação e X35H não possui
+> configuração de build independente validada (usa o DTB do X35S, como a ROCKNIX).
 
 ## Estrutura
 

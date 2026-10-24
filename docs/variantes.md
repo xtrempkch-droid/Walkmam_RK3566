@@ -11,7 +11,7 @@ diferença é o que entra no rootfs e qual serviço toma o `tty1` no boot.
 | Artefato | `rk3566-x55-mainline-sdcard-image` | `rk3566-x55-retroarch-sdcard-image` |
 | Add-on de rádio no app | `script.walkmam.radio` | — (use o painel web) |
 | Cores | — | NES, SNES, GB/GBC, GBA, PC Engine, PS1 (PS1 exige BIOS) |
-| Status | validado no X55 e X35H | **novo: build ainda não fechou em verde; nada testado em hardware** |
+| Status | validado no X55 e X35H | build **#116** verde (536 MB); **nada testado em hardware ainda** |
 
 O que é **igual** nas duas: kernel, U-Boot, DTBs (X55 + X35S/X35H), rotação
 (`display_transform`), rede USB (`g_ether`, 10.55.0.1), SSH `root/root`, painel web de
