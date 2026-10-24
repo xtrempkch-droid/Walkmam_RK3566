@@ -67,7 +67,12 @@ case "$ACTION" in
         printf '{"powered":%s,"name":"%s","devices":[' "$pwr" "$(printf '%s' "$name" | json_escape)"
         first=1
         timeout 5 bluetoothctl devices 2>/dev/null | while read -r _ mac rest; do
-            [ -n "$mac" ] || continue
+            # So aceita MAC de verdade; mensagens como "No default controller
+            # available" tambem saem nesse stream e nao podem virar "dispositivo".
+            case "$mac" in
+                [0-9A-Fa-f][0-9A-Fa-f]:[0-9A-Fa-f][0-9A-Fa-f]:[0-9A-Fa-f][0-9A-Fa-f]:*) : ;;
+                *) continue ;;
+            esac
             [ $first -eq 1 ] || printf ','
             first=0
             printf '{"mac":"%s","name":"%s"}' "$mac" "$(printf '%s' "$rest" | json_escape)"
@@ -79,7 +84,12 @@ case "$ACTION" in
         printf '['
         first=1
         timeout 5 bluetoothctl devices 2>/dev/null | while read -r _ mac rest; do
-            [ -n "$mac" ] || continue
+            # So aceita MAC de verdade; mensagens como "No default controller
+            # available" tambem saem nesse stream e nao podem virar "dispositivo".
+            case "$mac" in
+                [0-9A-Fa-f][0-9A-Fa-f]:[0-9A-Fa-f][0-9A-Fa-f]:[0-9A-Fa-f][0-9A-Fa-f]:*) : ;;
+                *) continue ;;
+            esac
             [ $first -eq 1 ] || printf ','
             first=0
             printf '{"mac":"%s","name":"%s"}' "$mac" "$(printf '%s' "$rest" | json_escape)"

@@ -28,6 +28,7 @@ está pronto, o que ainda é **hipótese** e exatamente o que testar e devolver.
 
 | Run | Commit | Resultado | Observação |
 | --- | --- | --- | --- |
+| #96 | `7e82e19` (DTS wifi/bt) | **success** | fixes de SDIO (0004) e `dma-names` uart1 (0021) + retry; base do #97 |
 | #94 | `0c9eb64` (Wi-Fi/BT + :8088) | **success** | artefato 356 MB: Wi-Fi/BT + painel web + rotate-90; **use este** |
 | #93 | `2b9da4a` (Wi-Fi/BT) | **success** | painel web ainda na 8080 (conflito com Kodi) |
 | #92 | `407fd46` (fix de fontes) | **success** | fixa U-Boot/ROCKNIX/rkbin + áudio; base do teste que validou `rotate-90` |

@@ -176,6 +176,11 @@ hipótese como fato ao portar outra placa.
   or empty`. O patch `0021-arm64-dts-rockchip-fix-missing-dma-names.patch` da ROCKNIX
   adiciona `dma-names = "tx", "rx";` ao `uart1` — agora aplicado como override no DTS.
   O aviso `RTL: no UART config entry found` vem do caminho H5 e é inofensivo no H4.
+- **Painel web validado no aparelho (#94):** subindo `index.html` + CGIs + serviço
+  manualmente depois do boot, do PC sobre o cabo USB deu `HTTP 200` no índice,
+  `wifi.sh?action=status` e `action=scan` retornaram JSON correto (redes listadas) e
+  `bt.sh?action=status` idem. Ou seja, o painel em si funciona; o que faltava para o BT
+  era o controlador inicializar (fix de DTS acima).
 - **Rede de segurança:** `walkmam-radio-retry.service` roda após o boot e, se `wlan0`
   não existir, recarrega o módulo (até 3x); se `hci0` estiver sem endereço, reinicia o
   `hci_uart`/BlueZ. Log em `/boot/radio-retry.log`.
