@@ -237,7 +237,17 @@ hipótese como fato ao portar outra placa.
   unset). Correção no workflow: habilitar explicitamente `SND_SOC_ROCKCHIP`,
   `SND_SOC_ROCKCHIP_I2S` e `SND_SOC_ROCKCHIP_I2S_TDM`, falhar o build se sumirem, e
   **desabilitar `&hdmi_sound`** junto com o HDMI (senão ele nunca encontra o codec).
-  Falta validar o áudio no aparelho depois do rebuild.
+- **Áudio — estado no aparelho (build #97, 2026-10-24):** a placa `rk817_ext` aparece
+  (`/proc/asound/cards`) e `aplay -l` lista `fe410000.i2s-rk817-hifi`; o
+  `speaker-test` roda sem erro. O mux do codec (`Playback Mux`) fica em **`HP`** por
+  padrão e **isso está certo no X55**: o DTS liga o amplificador de alto-falante
+  (`spk_amp`) em **`HPOL`/`HPOR`**, não em `SPKO`, então o caminho do alto-falante é
+  `DAC -> Playback Mux (HP) -> HPOL/HPOR -> Speaker Amp -> Internal Speakers`. O pin
+  switch `Internal Speakers` está `on` e o `simple-audio-card,hp-det-gpio`
+  (`gpio4 RK_PC6`) funciona: com nada plugado, `Headphones Jack` = `off`.
+  **Não** mude o mux para `SPK`: o `SPK DAC` é o class-D interno do rk817 e não está
+  roteado no DTS da X55 — em `SPK` o som simplesmente desaparece.
+  Falta apenas a confirmação auditiva do usuário (tocar algo no Kodi).
 - `va_openDriver() returns -1`: sem decodificação de vídeo por hardware via VA-API.
   O módulo `hantro_vpu` carrega e registra `/dev/video0` (dec) e `/dev/video1` (enc);
   falta o driver VA-API do Rockchip (`rockchip_drv_video.so`) no rootfs — investigar

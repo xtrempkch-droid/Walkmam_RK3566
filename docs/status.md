@@ -134,7 +134,7 @@ aparelhos, trocando o `FDT` no `extlinux.conf`.
 | `dr_mode = "peripheral"` faz a ancoragem USB funcionar | **hipótese** (testar `*peripheral`) |
 | Sentido da rotação no X55 | **confirmado no aparelho: `rotate-90`** |
 | Contagem de botões/eixos na X35H | **não medido** |
-| Áudio (I2S habilitado no #92) | **a validar** no aparelho |
+| Áudio (I2S habilitado no #92) | **placa e mixer ok no #97** (`rk817_ext`, `Playback Mux=HP` correto, jack detect off); falta só a confirmação auditiva |
 | Wi-Fi RTL8821CS | **confirmado no #97**: `wlan0` sobe no boot sem retry (fix SDIO 0004 + `dma-names` uart1 no DTS) |
 | Bluetooth RTL8821CS | **confirmado em 2026-10-24**: faltava o `rtl8821cs_config.bin` com a entrada UART `0x0c`; o CI agora gera o arquivo → `hci0` com MAC real, `UP`, scan ok, e sobe no boot |
 | Painel web de Wi-Fi/BT na porta 8088 | **implementado** e testado localmente (busybox httpd) |
