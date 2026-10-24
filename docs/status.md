@@ -5,11 +5,12 @@ está pronto, o que ainda é **hipótese** e exatamente o que testar e devolver.
 
 ## Como retomar (leia isto primeiro)
 
-> **Estado em 2026-10-24:** o **#92 está verde** e é a imagem a usar (352 MB). Ela
-> junta: boot ativo da X55 + `rotate-90` (validado), **SSH root/root**, Kodi com
-> `--socket=wayland-0` (validado no X55: 2 h sem reiniciar) e **áudio I2S habilitado**
-> (ainda não testado no aparelho). Os #90/#91 falharam por drift das fontes externas
-> (ROCKNIX master mudou) — o CI agora fixa U-Boot/ROCKNIX/rkbin por commit.
+> **Estado em 2026-10-24 (use o #94, 356 MB):** junta tudo o que foi validado e o que
+> é novo: X55 ativo com **`rotate-90`** (validado no aparelho), SSH `root/root`, Kodi
+> com `--socket=wayland-0` (2 h sem reiniciar), **áudio I2S**, **Wi-Fi/BT** (firmware +
+> `wpa_supplicant` + `bluez`) e o **painel web em `http://10.55.0.1:8088`** para
+> gerenciar rádio. Os #90/#91 falharam por drift das fontes externas — o CI agora fixa
+> U-Boot/ROCKNIX/rkbin por commit.
 
 1. Pegue o artifact `rk3566-x55-mainline-sdcard-image` do **run verde (success) mais
    recente** em Actions. Ele traz: boot ativo da X55 (`display_transform=rotate-90`),
@@ -27,7 +28,9 @@ está pronto, o que ainda é **hipótese** e exatamente o que testar e devolver.
 
 | Run | Commit | Resultado | Observação |
 | --- | --- | --- | --- |
-| #92 | `407fd46` (fix de fontes) | **success** | fixa U-Boot/ROCKNIX/rkbin; **use este artefato** (áudio incluído) |
+| #94 | `0c9eb64` (Wi-Fi/BT + :8088) | **success** | artefato 356 MB: Wi-Fi/BT + painel web + rotate-90; **use este** |
+| #93 | `2b9da4a` (Wi-Fi/BT) | **success** | painel web ainda na 8080 (conflito com Kodi) |
+| #92 | `407fd46` (fix de fontes) | **success** | fixa U-Boot/ROCKNIX/rkbin + áudio; base do teste que validou `rotate-90` |
 | #91 | `0a7ffb2` (áudio) | failure | ROCKNIX drift: patch X35S usa `&gpio_keys_control` (não existe no mainline 6.12) |
 | #90 | `da0073f` (Kodi) | failure | mesmo drift (não era o Kodi: kernel não compilava) |
 | #89 | `63f4bd7` (SSH) | **success** | imagem gravada e testada no X55; Kodi resolvido ao vivo |

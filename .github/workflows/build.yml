@@ -675,13 +675,17 @@ jobs:
           rootfs/etc/systemd/system/walkmam-webui.service
         sudo chroot rootfs systemctl enable walkmam-webui.service
 
-        echo "--> Conferindo se os binários que o painel usa entraram no rootfs..."
-        for bin in /usr/bin/busybox /usr/sbin/wpa_supplicant /usr/bin/nmcli /usr/bin/bluetoothctl /usr/sbin/rfkill; do
-          if [ ! -x "rootfs$bin" ]; then
-            echo "!!! faltando no rootfs: $bin" >&2
-            exit 1
-          fi
-        done
+        echo "--> Conferindo os binários que o painel usa (resolve o PATH real do rootfs)..."
+        if ! sudo chroot rootfs sh -c '
+              for b in busybox wpa_supplicant nmcli bluetoothctl rfkill iw; do
+                command -v "$b" >/dev/null 2>&1 || { echo "faltando: $b" >&2; exit 1; }
+              done
+              busybox --list | grep -qx httpd || { echo "busybox sem applet httpd" >&2; exit 1; }
+            '; then
+          echo "!!! O painel web nao vai funcionar: binario/applet ausente no rootfs." >&2
+          exit 1
+        fi
+        echo "--> ok: busybox(httpd), wpa_supplicant, nmcli, bluetoothctl, rfkill, iw"
 
         echo "--> Instalando módulos do kernel no RootFS..."
         cd kernel
