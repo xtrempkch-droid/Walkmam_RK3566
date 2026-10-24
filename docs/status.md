@@ -147,7 +147,7 @@ aparelhos, trocando o `FDT` no `extlinux.conf`.
 | `dr_mode = "peripheral"` faz a ancoragem USB funcionar | **hipótese** (testar `*peripheral`) |
 | Sentido da rotação no X55 | **confirmado no aparelho: `rotate-90`** |
 | Contagem de botões/eixos na X35H | **não medido** |
-| Áudio (I2S habilitado no #92) | **placa e mixer ok no #97** (`rk817_ext`, `Playback Mux=HP` correto, jack detect off); falta só a confirmação auditiva |
+| Áudio (I2S habilitado no #92) | **CONFIRMADO no aparelho (2026-10-24): som no jack 3,5 mm e no alto-falante interno**, com `rk817_ext`, `Playback Mux=HP` e detecção de jack por GPIO |
 | Wi-Fi RTL8821CS | **confirmado no #97**: `wlan0` sobe no boot sem retry (fix SDIO 0004 + `dma-names` uart1 no DTS) |
 | Bluetooth RTL8821CS | **confirmado em 2026-10-24**: faltava o `rtl8821cs_config.bin` com a entrada UART `0x0c`; o CI agora gera o arquivo → `hci0` com MAC real, `UP`, scan ok, e sobe no boot |
 | Painel web de Wi-Fi/BT na porta 8088 | **implementado** e testado localmente (busybox httpd) |
@@ -283,3 +283,7 @@ compilação; o `diagnostico.txt` mostra o que aconteceu no aparelho.
 - Alterar um `.dts` **depois** de `make dtbs` não afeta o `.dtb` já compilado.
 - O log do CI e o `diagnostico.txt` são arquivos diferentes (ver acima).
 - Não inventar GPIOs, nomes de `CONFIG_` nem valores de pinagem: usar só fonte confirmada.
+
+> Para levar estas placas a outro sistema, use
+> **[Hardware e drivers por dispositivo](hardware-e-drivers.md)** (arquitetura + receitas
+> F1–F11 de correção).

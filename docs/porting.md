@@ -1,5 +1,10 @@
 # Porting de dispositivos
 
+> Antes de começar, leia **[Hardware e drivers por dispositivo](hardware-e-drivers.md)**:
+> lá estão a arquitetura de hardware e de driver de cada placa, os GPIO/timings/firmware
+> exatos e as correções prontas para portar (F1–F11), com o que é mainline e o que é
+> código da ROCKNIX que você precisa carregar junto.
+
 Para adicionar uma placa, crie `devices/<device>/device.conf`, `kernel.fragment`, `dts/` e `uboot/`. Registre identificadores de DTB/defconfig apenas quando houver uma fonte confirmada. Não reutilize silenciosamente o DTS de outra placa.
 
 1. Identifique e documente as fontes públicas do DTS/DTB, U-Boot e configuração do kernel.

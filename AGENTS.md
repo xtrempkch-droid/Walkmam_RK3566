@@ -80,6 +80,14 @@ Se voltar a falhar: o motivo fica em **`/boot/kodi-start.log`** e na **tela (tty
   variante de teste `extlinux.conf.x35s-peripheral` (USB forçado a *device*).
 - O gadget não faz DHCP — se o PC ficar em 169.254.x.x, é isso.
 
+### 4.2.1 Áudio: mux tem que ficar em `HP` (não "conserte" isso)
+
+No X55 o amplificador do alto-falante (`spk_amp`) é alimentado por **`HPOL`/`HPOR`**, não
+pelo `SPKO` do codec. Por isso o `Playback Mux` **deve** ficar em `HP`; em `SPK` o
+aparelho fica **mudo**. Áudio validado pelo usuário nos **dois** caminhos (jack 3,5 mm e
+alto-falante interno), com `Headphones Jack` alternando por detecção de GPIO
+(`gpio4 RK_PC6`).
+
 ### 4.3 Bluetooth do X55 não inicializava — RESOLVIDO (2026-10-24)
 
 Sintoma: `hci0` existe, mas com `BD Address 00:00:00:00:00:00`; `bluetoothctl show`
@@ -245,4 +253,21 @@ dispare um commit vazio (`git commit --allow-empty`) para gerar a imagem.
   linha; e linhas `[CHG] ... RSSI:` não trazem nome (usar só as `[NEW]`).
 - Pendente / próximo: gravar a imagem (#99 em diante) e abrir o add-on pela TV para
   confirmar os diálogos (a lógica já foi testada, a GUI não).
+
+### 2026-10-24 — Copilot (áudio confirmado + doc de portabilidade)
+
+- Fez: registrou a confirmação do **áudio nos dois caminhos** (jack 3,5 mm e alto-falante
+  interno) e criou **`docs/hardware-e-drivers.md`**, a referência de portabilidade: para
+  cada um dos três aparelhos, a arquitetura de hardware e de driver (painel, backlight,
+  entrada, áudio, Wi-Fi/BT, USB, energia), os números exatos (GPIO, SARADC, timings,
+  trilhos, firmware), a lista de configs de kernel obrigatórias e **11 receitas prontas
+  (F1–F11)** para portar a outro sistema, além da tabela sintoma → causa → correção.
+- Também deixou explícito o que **não** é mainline e precisa ser carregado junto:
+  `rocknix-joypad`, o shim `input-polldev`, `panel-generic-dsi.c` (painel da X35S/X35H),
+  o DTS da X35S e o `rtl8821cs_config.bin` gerado.
+- Corrigido de passo: `CONFIG_BT_HCIUART` é `=m` (não `=y`); na X35S o Wi-Fi/BT está
+  **não medido** (só a X35H tem "sem WiFi/BT" registrado); o `dr_mode` da X55 vem do
+  `rk356x.dtsi` como `otg` (não precisa de variante "peripheral").
+- Pendente / próximo: validar a imagem #100 no aparelho (Bluetooth + add-on com o
+  teclado corrigido) e confirmar as builds.
 

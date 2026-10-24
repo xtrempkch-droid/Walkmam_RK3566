@@ -96,6 +96,7 @@ que foi verificado em hardware e o que ainda é hipótese.
 
 - [Estado do projeto e retomada](docs/status.md) — comece por aqui
 - [Fluxo de build](docs/build.md)
+- [Hardware e drivers por dispositivo (referência de portabilidade)](docs/hardware-e-drivers.md) — o que copiar para levar o aparelho a outro sistema
 - [Descobertas de hardware (confirmado/hipótese)](docs/findings.md)
 - [Roadmap](docs/roadmap.md)
 - [Porting de dispositivos](docs/porting.md)
