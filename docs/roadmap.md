@@ -60,10 +60,14 @@ forçar `dr_mode = "peripheral"` nos DTBs da X35S — removido nesta rodada.
 
 ## 4. Robustez do CI
 
-- Fixar versões: hoje o workflow clona `ROCKNIX/distribution` e o `rkbin` na ponta.
-  Fixe um commit de cada, como já foi feito com o `rocknix-joypad`.
+- Fixar versões: **FEITO** — U-Boot (`0a55b09`), `ROCKNIX/distribution` (`8c081eb`) e
+  `rkbin` (`3e288fe`) estão fixados por commit, com fallback de clone+checkout. Isso
+  era necessário: em 23/10 o master da ROCKNIX passou para o kernel 7.2, removeu o patch
+  0012 e reescreveu o 0016 para usar `&gpio_keys_control` (label que não existe no
+  mainline 6.12) — o `make dtbs` quebrou (#90/#91).
 - Fazer o job falhar quando faltar o `.dtb` ou o driver, em vez de seguir (já feito
-  para o FDT; vale estender ao driver do painel e ao do joypad).
+  para o FDT; vale estender ao driver do painel e ao do joypad). Há também guarda
+  contra patch de DTS rejeitado (`.rej`).
 - Usar o `build/create-image.sh` no workflow, em vez de manter a montagem da imagem
   duplicada dentro do YAML (isso também faz o X55 receber `rotate-270` automático).
 - Dar nome ao artifact pelo aparelho (`rk3566-<device>-<variant>`).

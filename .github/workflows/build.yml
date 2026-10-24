@@ -27,9 +27,35 @@ jobs:
     # Usamos uma tag estável recente que já contenha o suporte.
     - name: Fetch Sources (Mainline U-Boot, Mainline Kernel & RKBIN)
       run: |
-        git clone --depth 1 https://source.denx.de/u-boot/u-boot.git uboot
+        # U-Boot fixado no commit que gerou a imagem validada (o master do denx
+        # move e o defconfig pode deixar de bater).
+        UBOOT_COMMIT=0a55b098d6f5f6bafa84fc2f18b433dd167bf729
+        git init -q uboot
+        git -C uboot remote add origin https://source.denx.de/u-boot/u-boot.git
+        if git -C uboot fetch -q --depth 1 origin "$UBOOT_COMMIT"; then
+          git -C uboot checkout -q --detach FETCH_HEAD
+        else
+          rm -rf uboot
+          git clone -q --filter=blob:none --no-checkout https://source.denx.de/u-boot/u-boot.git uboot
+          git -C uboot checkout -q --detach "$UBOOT_COMMIT"
+        fi
+        echo "--> U-Boot em $(git -C uboot rev-parse HEAD)"
         git clone --depth 1 --branch v6.12 https://github.com/torvalds/linux.git kernel
-        git clone --depth 1 https://github.com/rockchip-linux/rkbin.git rkbin
+        # rkbin fixado: o master já removeu os blobs que o defconfig espera e o
+        # fallback "mais recente" muda sem aviso. Este commit é o que gerou a
+        # imagem validada (bl31 v1.46 / ddr v1.26 entram pelo fallback).
+        RKBIN_COMMIT=3e288fe814e059dd06833495f845cab04ac20a5c
+        git init -q rkbin
+        git -C rkbin remote add origin https://github.com/rockchip-linux/rkbin.git
+        if git -C rkbin fetch -q --depth 1 origin "$RKBIN_COMMIT"; then
+          git -C rkbin checkout -q --detach FETCH_HEAD
+        else
+          echo "--> fetch por SHA falhou para o rkbin; usando clone rasos + checkout"
+          rm -rf rkbin
+          git clone -q --filter=blob:none --no-checkout https://github.com/rockchip-linux/rkbin.git rkbin
+          git -C rkbin checkout -q --detach "$RKBIN_COMMIT"
+        fi
+        echo "--> rkbin em $(git -C rkbin rev-parse HEAD)"
 
     - name: Build Mainline U-Boot
       run: |
@@ -67,7 +93,22 @@ jobs:
         # X35H NUNCA foi enviada ao mainline — só existe como fonte própria da
         # ROCKNIX. Por isso a busca aqui é ampla (qualquer arquivo com "x35"
         # no nome, não só *.patch).
-        git clone --depth 1 https://github.com/ROCKNIX/distribution.git rocknix-src
+        # ROCKNIX fixado: o master anda junto com o kernel deles (7.x). O patch
+        # da X35S atual usa o label `&gpio_keys_control`, que NÃO existe no DTS
+        # da X55 do mainline 6.12 -> o dtbs falha. Este commit é o estado que
+        # gerou a imagem validada (#89) e aplica os dois patches limpos.
+        ROCKNIX_COMMIT=8c081eb645f8f9a9fc59fe0c8c7927ce79d5192c
+        git init -q rocknix-src
+        git -C rocknix-src remote add origin https://github.com/ROCKNIX/distribution.git
+        if git -C rocknix-src fetch -q --depth 1 origin "$ROCKNIX_COMMIT"; then
+          git -C rocknix-src checkout -q --detach FETCH_HEAD
+        else
+          echo "--> fetch por SHA falhou para a ROCKNIX; usando clone raso + checkout"
+          rm -rf rocknix-src
+          git clone -q --filter=blob:none --no-checkout https://github.com/ROCKNIX/distribution.git rocknix-src
+          git -C rocknix-src checkout -q --detach "$ROCKNIX_COMMIT"
+        fi
+        echo "--> ROCKNIX em $(git -C rocknix-src rev-parse HEAD)"
 
         echo "--> Localizando linux.aarch64.conf (RK3566, comum a toda a família)..."
         ROCKNIX_KCONFIG=$(find rocknix-src -path '*RK3566*/linux/linux.aarch64.conf' | head -n1)
@@ -140,6 +181,16 @@ jobs:
           echo "Aplicando $p"
           git apply --reject --whitespace=fix "$p" || echo "!!! Falhou ao aplicar $p, verifique manualmente (pode já não bater com esta versão do kernel)."
         done
+
+        # Patch rejeitado deixa .rej e um .dts inconsistente (ex.: label que não
+        # existe no mainline) que só quebra lá no `make dtbs`. Falha aqui, claro.
+        REJ=$(find arch/arm64/boot/dts/rockchip -name '*.rej' 2>/dev/null)
+        if [ -n "$REJ" ]; then
+          echo "!!! Patches de DTS rejeitados (a ROCKNIX mudou?):" >&2
+          echo "$REJ" >&2
+          echo "!!! Nao continue: o .dts resultante referencia labels inexistentes no mainline." >&2
+          exit 1
+        fi
 
         echo "--> Garantindo que todo .dts novo (via patch ou cópia direta) está registrado no Makefile..."
         # Copia primeiro os .dts/.dtsi que vieram soltos (não via patch)

@@ -5,17 +5,17 @@ está pronto, o que ainda é **hipótese** e exatamente o que testar e devolver.
 
 ## Como retomar (leia isto primeiro)
 
-> **Handoff combinado (2026-10-09):** o usuário vai **criar/baixar a imagem quando
-> voltar** e avisar; a partir daí eu (agente) sigo com o teste. O build com as
-> correções de SSH/Kodi é o **#89** (commit `63f4bd7`), disparado ao subir as
-> mudanças — **confirme que ficou `success`** antes de usar.
+> **Estado em 2026-10-23:** o X55 está **com o Kodi rodando** (imagem do #89) e o
+> **SSH/`usb0` funcionando**. A correção do socket do Weston (`--socket=wayland-0`) e a
+> do áudio (`SND_SOC_ROCKCHIP_I2S*` + `hdmi_sound` desligado) estão no `main`, mas os
+> runs #90/#91 **falharam por drift das fontes externas** (ROCKNIX master mudou). O CI
+> agora fixa U-Boot/ROCKNIX/rkbin por commit; gere um run novo e use o artifact verde
+> mais recente.
 
 1. Pegue o artifact `rk3566-x55-mainline-sdcard-image` do **run verde (success) mais
-   recente** em Actions — o esperado é o **#89**. Ele traz: boot ativo da X55
-   (`display_transform=rotate-270`), **login do root por senha liberado no SSH**,
-   o launcher do Kodi com fallback (Weston → GBM) e erro na tela, e os logs de
-   diagnóstico. **Não** use runs com `failure` (o #82/#83 falharam por um bug de
-   aspas já corrigido).
+   recente** em Actions. Ele traz: boot ativo da X55 (`display_transform=rotate-270`),
+   **SSH com senha liberado**, Kodi com `--socket=wayland-0`, áudio (I2S) habilitado e
+   os logs de diagnóstico. **Não** use runs com `failure`.
 2. Grave no cartão, ligue o cabo USB e faça os testes da seção **"Testes a fazer"**.
 3. Confirme que o **SSH** entra: `ssh root@10.55.0.1` (senha `root`). Se entrar, dá
    para depurar ao vivo (dmesg, journalctl, `kodi.log`).
@@ -28,19 +28,24 @@ está pronto, o que ainda é **hipótese** e exatamente o que testar e devolver.
 
 | Run | Commit | Resultado | Observação |
 | --- | --- | --- | --- |
-| #89 | `63f4bd7` (SSH + Kodi) | **a confirmar** | libera SSH por senha (`PermitRootLogin`), launcher com fallback; **use se `success`** |
+| #92 | (fix de fontes) | **a confirmar** | fixa U-Boot/ROCKNIX/rkbin por commit |
+| #91 | `0a7ffb2` (áudio) | failure | ROCKNIX drift: patch X35S usa `&gpio_keys_control` (não existe no mainline 6.12) |
+| #90 | `da0073f` (Kodi) | failure | mesmo drift (não era o Kodi: kernel não compilava) |
+| #89 | `63f4bd7` (SSH) | **success** | imagem gravada e testada no X55; Kodi resolvido ao vivo |
 | #88 | `84b38ea` (diagnóstico) | **success** | Kodi/USB diagnosticáveis + variante `x55-peripheral` |
-| #87 | `e430e61` (fix X55) | **success** | boot ativo da X55 + `rotate-270` |
+| #87 | `e30e6`/`e430e61` (fix X55) | **success** | boot ativo da X55 + `rotate-270` |
 | #84 | `836f3b5` (fix) | **success** | imagem antiga (bootava com DTB da X35S) |
-| #83 | `664b057` (docs) | failure | mesmo bug de aspas do #82; ignorar |
+| #83 | `664b057` (docs) | failure | bug de aspas do #82; ignorar |
 | #82 | `68c5c77` (merge USB) | failure | bug de aspas no `build.yml` |
 | #81 | `42e66b7` (merge rotação) | success | — |
 
-> **#89 é o run a usar** (se ficou `success`). Mantém o boot ativo da X55
-> (`rotate-270`), libera o **login do root por senha no SSH** (o Debian 12 bloqueia
-> por padrão com `PermitRootLogin prohibit-password`) e melhora o Kodi: fallback
-> Weston→GBM e o motivo do erro **na tela**. Inclui também o diagnóstico de Kodi/USB
-> e a entrada `extlinux/extlinux.conf.x55-peripheral`.
+> **Por que o #90/#91 falharam (drift de fontes externas):** o CI clonava a
+> `ROCKNIX/distribution` no **master**. Em 23/10 esse master estava no kernel **7.2**,
+> tinha **removido** o patch 0012 (joypad da X55) e reescrito o 0016 (X35S) usando o
+> label `&gpio_keys_control`, que **não existe** no DTS da X55 do mainline 6.12 → o
+> `make dtbs` falhava. Correção: U-Boot, ROCKNIX e rkbin **fixados por commit** (os
+> commits que geraram a imagem validada) + guarda que falha na hora se um patch de DTS
+> for rejeitado (deixava `.rej` e um DTS inconsistente).
 
 O #82/#83 falharam sempre no step **"Build Minimal RootFS (Debian ARM64)"**, com
 `ep0: command not found` e `here-document ... delimited by end-of-file`. Causa: o step

@@ -24,13 +24,20 @@ hipótese como fato ao portar outra placa.
 ## Device tree
 
 - **X55** tem DTS no kernel mainline (`rk3566-powkiddy-x55.dts`, desde o Linux 6.8).
+- **Cuidado com drift da ROCKNIX (confirmado em 2026-10-23):** o `master` deles passou
+  para o **kernel 7.2**, **removeu** o patch `0012` (joypad da X55) e reescreveu o
+  `0016` (X35S) para usar `&gpio_keys_control`, label que **não existe** no DTS da X55
+  do mainline 6.12. Resultado: `make dtbs` falha (`#90`/`#91`). O CI agora fixa a
+  ROCKNIX em `8c081eb` (o estado que gerou a imagem validada) e falha cedo se algum
+  patch de DTS for rejeitado.
 - **X35S** não existe no mainline v6.12 (confirmado: `make dtbs` não gera o `.dtb`).
   O DTS vem de um patch da ROCKNIX (`add device tree for powkiddy x35s`) que só
   adiciona o arquivo. É preciso registrá-lo no `Makefile` de
   `arch/arm64/boot/dts/rockchip/`, senão o `.dtb` não é compilado.
 - **X35H** não tem DTB próprio. A documentação da ROCKNIX manda usar o da X35S.
-- O DTS da X35S tem 37 linhas e só sobrescreve o painel (`&panel`). Isso sugere que
-  ele inclui o DTS do X55 (**hipótese**, não verificada).
+- O DTS da X35S tem ~41 linhas: faz `#include "rk3566-powkiddy-x55.dts"` e sobrescreve
+  `model`, bateria, joypad e painel (640x480, `rocknix,generic-dsi`). **Confirmado**
+  compilando e decompilando o `.dtb` — X35S e X35H compartilham esse mesmo DTB.
 
 ## Painel (confirmado)
 
