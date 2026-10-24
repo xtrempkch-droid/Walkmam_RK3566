@@ -108,8 +108,9 @@ capture() {
   echo "----- RetroArch: cores instalados -----"
   for d in /usr/lib/*/libretro /usr/lib/libretro; do
     [ -d "$d" ] || continue
-    printf '%s: %s core(s)\n' "$d" "$(ls -1 "$d"/*.so 2>/dev/null | wc -l)"
-    ls -1 "$d"/*.so 2>/dev/null | xargs -r -n1 basename | tr '\n' ' '
+    # No Debian os cores sao *.libretro (nao *.so); contar as duas extensoes.
+    printf '%s: %s core(s)\n' "$d" "$(ls -1 "$d"/*.libretro "$d"/*.so 2>/dev/null | wc -l)"
+    ls -1 "$d"/*.libretro "$d"/*.so 2>/dev/null | xargs -r -n1 basename | tr '\n' ' '
     echo
   done
   echo

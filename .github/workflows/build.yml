@@ -770,18 +770,23 @@ jobs:
             echo "!!! diretorio de cores libretro nao encontrado no rootfs" >&2
             exit 1
           fi
+          # No Debian os cores NAO sao *.so: vem como *.libretro
+          # (/usr/lib/aarch64-linux-gnu/libretro/mgba.libretro). O RetroArch
+          # aceita as duas extensoes; contar so *.so daria 0 e o build falharia
+          # por um motivo falso.
           echo "--> retroarch: $RETROARCH_BIN | cores: $LIBRETRO_DIR"
-          QTD_CORES=$(sudo chroot rootfs sh -c "ls -1 $LIBRETRO_DIR/*.so 2>/dev/null | wc -l")
+          QTD_CORES=$(sudo chroot rootfs sh -c "ls -1 $LIBRETRO_DIR/*.libretro $LIBRETRO_DIR/*.so 2>/dev/null | wc -l")
           echo "--> cores instalados: $QTD_CORES"
           if [ "$QTD_CORES" -lt 5 ]; then
             echo "!!! poucos cores ($QTD_CORES): a lista de pacotes mudou?" >&2
             exit 1
           fi
-          echo "--> amostra: $(sudo chroot rootfs sh -c "ls -1 $LIBRETRO_DIR/*.so | head -3 | xargs -n1 basename | tr '\n' ' '")"
+          echo "--> amostra: $(sudo chroot rootfs sh -c "ls -1 $LIBRETRO_DIR/*.libretro $LIBRETRO_DIR/*.so 2>/dev/null | head -4 | xargs -n1 basename | tr '\n' ' '")"
 
           echo "--> [retroarch] Escrevendo o retroarch.cfg (com o caminho real dos cores)..."
           sudo mkdir -p rootfs/root/.config/retroarch
-          sed "s|@LIBRETRO_DIR@|$LIBRETRO_DIR|" \
+          # Barra final igual ao padrão do Debian (".../libretro/").
+          sed "s|@LIBRETRO_DIR@|$LIBRETRO_DIR/|" \
             variants/retroarch/overlay/etc/walkmam/retroarch.cfg \
             | sudo tee rootfs/root/.config/retroarch/retroarch.cfg >/dev/null
           if ! grep -q "^libretro_directory = \"$LIBRETRO_DIR\"" rootfs/root/.config/retroarch/retroarch.cfg; then

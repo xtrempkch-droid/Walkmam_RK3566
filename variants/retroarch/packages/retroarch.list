@@ -1,29 +1,42 @@
 # Pacotes da variante "retroarch" (versão de jogos).
 #
-# Nomes conferidos no Debian 12 (bookworm), arm64. Os cores ficam em
-# /usr/lib/<triple>/libretro e os metadados em /usr/share/libretro/info —
-# o build descobre o caminho real e o grava no retroarch.cfg.
+# IMPORTANTE — como validar um nome antes de acrescentar:
+# NÃO confie em https://packages.debian.org/bookworm/arm64/<pacote>: ele devolve
+# HTTP 200 mesmo quando o pacote não existe para a arquitetura (é uma página de
+# erro). A fonte da verdade é o índice da arquitetura:
 #
-# Escolha dos cores: consoles que rodam bem no RK3566 (Cortex-A55, 2 GB).
-# N64 e PSP existem no bookworm (libretro-mupen64plus-next, libretro-ppsspp),
-# mas NÃO estão incluídos porque o desempenho não foi validado neste hardware.
-# Para incluir, basta acrescentar o nome do pacote aqui.
+#   curl -s http://deb.debian.org/debian/dists/bookworm/main/binary-arm64/Packages.gz \
+#     | zcat | grep -c '^Package: <nome>$'
+#
+# Isso importa: libretro-fceumm, libretro-snes9x, libretro-genesisplusgx e
+# libretro-pcsx-rearmed NÃO existem para arm64 (o apt falha com "não é possível
+# encontrar o pacote"), embora existam para amd64/armhf.
 
 retroarch
 retroarch-assets
 libretro-core-info
 
-# Consoles de 8 e 16 bits
-libretro-fceumm
+# O que o arm64 do bookworm realmente tem (conferido no índice):
+#   NES ................. libretro-nestopia
+#   SNES ................ libretro-bsnes-mercury-{accuracy,balanced,performance}
+#   GB/GBC .............. libretro-gambatte
+#   GBA ................. libretro-mgba
+#   PC Engine ........... libretro-beetle-pce-fast
+#   PlayStation 1 ....... libretro-beetle-psx  (EXIGE BIOS, ver abaixo)
+#   Virtual Boy ......... libretro-beetle-vb
+#   WonderSwan .......... libretro-beetle-wswan
+#   Nintendo DS ......... libretro-desmume    (pesado; não incluído)
+
 libretro-nestopia
-libretro-snes9x
+libretro-bsnes-mercury-balanced
 libretro-gambatte
 libretro-mgba
-libretro-genesisplusgx
 libretro-beetle-pce-fast
 
-# PlayStation 1 (não precisa de BIOS)
-libretro-pcsx-rearmed
+# PlayStation 1: é o único core de PS1 para arm64, e ele PRECISA de BIOS
+# (scph5500.bin / scph5501.bin / scph5502.bin) em /storage/bios. A BIOS não é
+# distribuída com o projeto; sem ela o core não roda jogo.
+libretro-beetle-psx
 
 # Ambiente gráfico e áudio (mesmos pacotes do Kodi: já validados no aparelho)
 weston

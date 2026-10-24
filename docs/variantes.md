@@ -10,7 +10,8 @@ diferença é o que entra no rootfs e qual serviço toma o `tty1` no boot.
 | Serviço no tty1 | `kodi.service` | `retroarch.service` |
 | Artefato | `rk3566-x55-mainline-sdcard-image` | `rk3566-x55-retroarch-sdcard-image` |
 | Add-on de rádio no app | `script.walkmam.radio` | — (use o painel web) |
-| Status | validado no X55 e X35H | **novo: ainda não testado em hardware** |
+| Cores | — | NES, SNES, GB/GBC, GBA, PC Engine, PS1 (PS1 exige BIOS) |
+| Status | validado no X55 e X35H | **novo: build ainda não fechou em verde; nada testado em hardware** |
 
 O que é **igual** nas duas: kernel, U-Boot, DTBs (X55 + X35S/X35H), rotação
 (`display_transform`), rede USB (`g_ether`, 10.55.0.1), SSH `root/root`, painel web de
@@ -75,17 +76,47 @@ para ROMs.
 
 ## Cores incluídos
 
-Consoles de 8/16 bits e PlayStation 1 (que não exige BIOS):
+O que o **arm64 do bookworm** realmente tem (conferido no índice da arquitetura, não
+no site de pacotes — ver o aviso no fim desta seção):
 
-`libretro-fceumm`, `libretro-nestopia` (NES), `libretro-snes9x` (SNES),
-`libretro-gambatte`, `libretro-mgba` (GB/GBC/GBA), `libretro-genesisplusgx`
-(Mega Drive/Genesis/Master System), `libretro-beetle-pce-fast` (PC Engine),
-`libretro-pcsx-rearmed` (PS1).
+| Sistema | Pacote | Arquivo do core |
+| --- | --- | --- |
+| NES | `libretro-nestopia` | `nestopia.libretro` |
+| SNES | `libretro-bsnes-mercury-balanced` | `bsnes_mercury_balanced.libretro` |
+| GB/GBC | `libretro-gambatte` | `gambatte.libretro` |
+| GBA | `libretro-mgba` | `mgba.libretro` |
+| PC Engine | `libretro-beetle-pce-fast` | `mednafen_pce_fast.libretro` |
+| PlayStation 1 | `libretro-beetle-psx` | `mednafen_psx.libretro` |
 
-**Não incluídos de propósito:** `libretro-mupen64plus-next` (N64) e `libretro-ppsspp`
-(PSP). Os pacotes existem para arm64, mas o desempenho no RK3566 **não foi medido** —
-trate como experimental. Para adicionar, basta incluir o nome no
-`variants/retroarch/packages/retroarch.list` (um por linha, `#` comenta).
+**PlayStation 1 exige BIOS.** É o único core de PS1 disponível para arm64 e ele precisa
+de `scph5500.bin`/`scph5501.bin`/`scph5502.bin` em `/storage/bios`. A BIOS não vem com o
+projeto.
+
+**Não existem para arm64** (o apt falha com "não é possível encontrar o pacote", embora
+existam para amd64/armhf): `libretro-fceumm`, `libretro-snes9x`, `libretro-genesisplusgx`
+e `libretro-pcsx-rearmed`. Ou seja: **não há core de Mega Drive/Genesis** no arm64 do
+bookworm. Se precisar, compile o core (genesis_plus_gx) na mão e coloque em
+`/storage/cores`.
+
+Também disponíveis, mas não incluídos: `libretro-beetle-vb` (Virtual Boy),
+`libretro-beetle-wswan` (WonderSwan) e `libretro-desmume` (NDS, pesado).
+
+### Dois detalhes do Debian que quebram build/config
+
+1. **Os cores não são `.so`.** Vêm como **`.libretro`**
+   (`/usr/lib/aarch64-linux-gnu/libretro/mgba.libretro`). O RetroArch aceita as duas
+   extensões, mas qualquer contagem/verificação que só olhe `*.so` acha zero.
+2. **Não use `packages.debian.org/bookworm/arm64/<pacote>` para validar um nome:** ele
+   responde **HTTP 200 mesmo quando o pacote não existe** para a arquitetura (é uma
+   página de erro). A fonte da verdade é o índice:
+
+   ```sh
+   curl -s http://deb.debian.org/debian/dists/bookworm/main/binary-arm64/Packages.gz \
+     | zcat | grep -c '^Package: <nome>$'
+   ```
+
+   Foi assim que apareceram os quatro cores inexistentes acima — depois de um build
+   falhar por eles.
 
 ## A armadilha dos nomes de driver (RetroArch 1.14)
 
