@@ -212,6 +212,14 @@ hipótese como fato ao portar outra placa.
   Cuidados ao mexer no add-on: `bluetoothctl` imprime `[NEW] Device <MAC> <nome>` no
   scan e `Device <MAC> <nome>` em `devices`, então o parser não pode ser ancorado no
   início da linha; e as linhas `[CHG] ... RSSI:` não trazem nome (usar só `[NEW]`).
+  **GUI validada no aparelho (2026-10-24)** usando o JSON-RPC do Kodi em TCP **9090**
+  (o `--webserver` da 8080 está desligado; a 9090 responde sem habilitar nada):
+  `Addons.GetAddonDetails` devolveu `{name: "Walkmam Radio", type: "xbmc.python.script",
+  version: "1.0.0", enabled: True, broken: False}`; `Addons.ExecuteAddon` abriu o
+  diálogo (`Select dialog`, controle focado `Wi-Fi: status e conexao`); navegar para
+  `Wi-Fi: procurar redes` e selecionar rodou o scan e abriu a lista de verdade
+  (`Kill.exe (100%) WPA2`). Zero tracebacks no `kodi.log`. Este é o caminho para
+  testar o add-on por SSH sem tocar na TV.
 
 ## Cosmético: leve esticamento horizontal (relato no aparelho, 2026-10-24)
 

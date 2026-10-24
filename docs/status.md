@@ -122,7 +122,10 @@ aparelhos, trocando o `FDT` no `extlinux.conf`.
   procurar, parear, conectar, ficar visível). Aparece em **Add-ons → Add-ons de
   programas**. Validado no aparelho: o `CAddonMgr` registra
   `script.walkmam.radio v1.0.0 installed` e as leituras reais (redes Wi-Fi, controlador
-  BT, scan) funcionam.
+  BT, scan) funcionam. A **GUI** também foi validada: via JSON-RPC do Kodi (TCP **9090**)
+  o add-on abriu o diálogo, a opção *Wi-Fi: procurar redes* rodou o scan e listou redes
+  reais, sem traceback. Dá para repetir por SSH: `Addons.ExecuteAddon` +
+  `Input.ExecuteAction` (`down`/`select`/`back`) + `GUI.GetProperties`.
 - **Firmware de rádio:** o CI baixa do `linux-firmware` (tag **20260309**, sha256
   conferido) `rtw88/rtw8821c_fw.bin` e `rtl_bt/rtl8821cs_fw.bin`, e **gera** o
   `rtl_bt/rtl8821cs_config.bin` (25 bytes, com a entrada UART `0x0c`) — ver
