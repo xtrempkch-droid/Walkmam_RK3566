@@ -3,7 +3,57 @@
 Ponto de partida para continuar o trabalho depois de testar no aparelho. Diz o que já
 está pronto, o que ainda é **hipótese** e exatamente o que testar e devolver.
 
-## Como retomar (leia isto primeiro)
+## ⏸️ PONTO DE RETOMADA (2026-10-24, fim da sessão)
+
+> Leia esta seção antes de qualquer coisa. O resto do documento é o histórico.
+>
+> **Imagem de MULTIMÍDIA (`kodi`) pronta e validada:** build **#100 / #105** (356 MB,
+> `rk3566-x55-mainline-sdcard-image`). É a que se usa no aparelho hoje. Inclui Bluetooth
+> corrigido, add-on de rádio, `/boot/roms` não se aplica, rotação `auto`.
+>
+> **Variante de JOGOS (`retroarch`): código completo, build ainda sem fechar.**
+> 5 tentativas (#106, #108, #112, #114) e cada uma achou um erro real que já está
+> corrigido no `main`: (1) 4 cores que não existem para arm64, (2) cores são
+> `.libretro` e não `.so`, (3) asserção comparando caminho com e sem barra,
+> (4) **leitura de `rootfs/root` (0700) sem `sudo`** — este foi o último, com a
+> evidência do log do #112: os 24 pacotes e os **12 cores instalaram**, só a
+> verificação falhou.
+>
+> **PRÓXIMO PASSO (1 comando):** o build **#116** (tag `retroarch-v0.6`, commit
+> `b73eec7`) ainda estava nos passos iniciais quando a sessão terminou. Duas
+> possibilidades:
+>
+> 1. **Se #116 der `success`** → baixe o artefato
+>    `rk3566-x55-retroarch-sdcard-image`, grave e teste no aparelho (checklist em
+>    [variantes.md](variantes.md), seção "Se o RetroArch não abrir").
+> 2. **Se #116 falhar** → olhe a última linha do passo que falhou e compare com a
+>    lista de armadilhas abaixo. Para repetir sem gastar build de kodi:
+>    `git tag retroarch-v0.7 && git push origin retroarch-v0.7`
+>    (o `push` na `main` constrói kodi; a tag constrói retroarch).
+>
+> **O que ainda NÃO foi testado em hardware na variante de jogos:** boot, rotação,
+> áudio, reconhecimento do joypad ROCKNIX e a exibição dos cores no menu. O launcher
+> foi testado com binários falsos (rotação por modelo, fallback wayland→drm, falha
+> total, binário ausente) — ver o log em `AGENTS.md`.
+>
+> **Pendência aberta no X35H:** a porta USB **não ancora** e já se sabe que **não é o
+> papel OTG** (testado: `peripheral` não mudou nada; UDC existe com `not attached`).
+> Falta o teste do pendrive: ligar, rodar `dmesg -w` e ver
+> `ls /sys/bus/usb/devices/`. A imagem já grava tudo em `/boot/usb-watch.log`.
+> Hipótese atual: a porta é **host-only** (`usb@fd000000`) — nesse caso um
+> adaptador USB-Ethernet resolve rede/SSH na X35H e o gadget é impossível.
+>
+> **Armadilhas que custaram build nesta sessão (não repita):**
+> - validar pacote por `packages.debian.org/<suite>/arm64/<pkg>`: responde **200** mesmo
+>   quando o pacote não existe → use o índice `binary-arm64/Packages.gz`;
+> - `rootfs/root` é **0700**: escrever **e ler** exige `sudo`;
+> - `[skip ci]` no commit de topo cancela o build da **tag** também (a tag aponta para
+>   o commit);
+> - `name:` de step no YAML não pode conter `:` (quebra o parse).
+
+---
+
+## Como retomar (histórico)
 
 > **Estado em 2026-10-24 (use o #100, 356 MB):** junta tudo o que foi validado e o que
 > é novo: X55 ativo com **`rotate-90`** (validado no aparelho), SSH `root/root`, Kodi
@@ -29,6 +79,12 @@ está pronto, o que ainda é **hipótese** e exatamente o que testar e devolver.
 
 | Run | Commit | Resultado | Observação |
 | --- | --- | --- | --- |
+| #116 | `b73eec7` (tag v0.6) | **?** | variante retroarch com as 4 correções; não terminou na sessão |
+| #115 | `b73eec7` (main) | success | kodi, valida o refactor das variantes |
+| #112 | `a5e80bf` (tag v0.4) | failure | `rootfs/root` 0700: grep sem sudo; pacotes e 12 cores OK |
+| #108 | `e1788c6` (tag v0.2) | failure | asserção do retroarch.cfg (barra final) |
+| #106 | `04c32b1` (tag v0.1) | failure | 4 cores inexistentes para arm64 |
+| #105 | `d42c856` | success | kodi 356 MB (após refactor) |
 | #100 | `38c9e05` (BT + add-on) | **success** | **use esta**: Bluetooth corrigido (config UART gerado) + add-on Walkmam Radio com o teclado da senha certo; 356 MB |
 | #99 | `5ec2ef9` (add-on) | success | add-on incluído, mas com o bug do teclado (só números) |
 | #98 | `f0902f0` (BT config) | success | corrige o Bluetooth; ainda sem o add-on |
@@ -291,14 +347,14 @@ compilação; o `diagnostico.txt` mostra o que aconteceu no aparelho.
 
 > Para levar estas placas a outro sistema, use
 > **[Hardware e drivers por dispositivo](hardware-e-drivers.md)** (arquitetura + receitas
-> F1–F11 de correção).
+> F1–F12 de correção).
 
 ## Variantes
 
 | Variante | Artefato | Estado |
 | --- | --- | --- |
 | `kodi` (multimídia) | `rk3566-x55-mainline-sdcard-image` | validada no X55 e X35H |
-| `retroarch` (jogos) | `rk3566-x55-retroarch-sdcard-image` | **implementada, não testada em hardware** |
+| `retroarch` (jogos) | `rk3566-x55-retroarch-sdcard-image` | **implementada; build #116 não terminou** (ver Ponto de Retomada no topo) |
 
 Escolha no `Run workflow` (input `variant`); push na `main` constrói `kodi`. Detalhes em
 [variantes.md](variantes.md).

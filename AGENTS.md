@@ -9,6 +9,34 @@ Idioma do repositório: **português**. Mantenha comentários, commits e docs em
 
 ---
 
+## 0. ONDE PARAMOS (2026-10-24) — leia antes de tudo
+
+Detalhe completo em [`docs/status.md`](status.md#-ponto-de-retomada-2026-10-24-fim-da-sessão).
+Resumo:
+
+| O que | Estado |
+| --- | --- |
+| Variante **`kodi`** (multimídia) | **pronta e validada** no X55 e X35H — build #100/#105, artefato 356 MB |
+| Variante **`retroarch`** (jogos) | **código completo, build sem fechar** — 4 bugs reais já corrigidos; o build **#116** (tag `retroarch-v0.6`) não terminou |
+| X35H: áudio, vídeo 640x480@58,5 Hz, botões | **confirmados em hardware** |
+| X35H: USB | **não ancora**; já se sabe que **não é o papel OTG**. Falta o teste do pendrive |
+| X55 | tudo o que a imagem entrega foi validado, incluindo áudio no jack e no alto-falante |
+
+**Para gerar a imagem de jogos:** `git tag retroarch-vN && git push origin retroarch-vN`
+(push na `main` gera `kodi`; a tag `retroarch-*` gera `retroarch`). Se falhar, o passo
+**Preflight** diz em segundos qual pacote/arquivo está errado, sem compilar kernel.
+
+**Nunca repita (custou build):**
+1. Validar pacote por `packages.debian.org/<suite>/arm64/<pkg>` — responde **HTTP 200**
+   com página de erro quando o pacote não existe para arm64. Use
+   `http://deb.debian.org/debian/dists/bookworm/main/binary-arm64/Packages.gz`.
+2. Ler ou escrever em `rootfs/root/...` sem `sudo`: o diretório é **0700** e o erro é
+   `Permission denied` (foi o que derrubou o build #112 com tudo mais correto).
+3. `[skip ci]` no commit de topo: também impede o build da **tag** que aponta para ele.
+4. `:` dentro de `name:` de um step no YAML — quebra o parse do workflow.
+
+---
+
 ## 1. Qual é o objetivo do projeto
 
 Colocar o **Kodi** para funcionar em handhelds **RK3566**, começando pelo
@@ -414,4 +442,36 @@ outro commit resolve sem force-push na branch.
   cores instalados e o `usb-watch.log`.
 - Pendente / próximo: **nada disso foi testado em hardware**; o primeiro teste precisa
   confirmar boot, rotação e áudio no RetroArch, e se o joypad ROCKNIX é reconhecido.
+
+### 2026-10-24 (4) — Copilot (variante retroarch: 4 builds, 4 bugs reais)
+
+- Fez: criou a variante **`retroarch`** (jogos) ao lado de `kodi` (multimídia), com
+  input `variant` no workflow e gatilho por tag (`retroarch-*`). Extraiu a rotação/start
+  do Weston para `common/overlay/.../display.sh` (fonte única) e deixou `/roms` na
+  partição FAT para copiar jogo pelo PC — essencial na X35H, onde o USB não ancora.
+- **4 builds da variante falharam, cada um por um motivo diferente, todos corrigidos:**
+  1. `libretro-fceumm`, `libretro-snes9x`, `libretro-genesisplusgx` e
+     `libretro-pcsx-rearmed` **não existem para arm64** (existem para amd64/armhf).
+     Descoberto simulando `apt-get -s install` com `APT::Architecture=arm64` e o índice
+     `binary-arm64/Packages.gz`. A lista passou a usar o que existe: `nestopia`,
+     `bsnes-mercury-balanced`, `gambatte`, `mgba`, `beetle-pce-fast`, `beetle-psx`.
+  2. Os cores vêm como **`.libretro`** (e também `_libretro.so`), não só `.so`: a
+     contagem por `*.so` dava números estranhos.
+  3. A asserção do `retroarch.cfg` comparava `.../libretro/` (gerado) com
+     `.../libretro` (esperado) → abortava por causa da própria checagem.
+  4. **`rootfs/root` é 0700**: o `grep` de verificação rodava sem `sudo` e recebia
+     `Permission denied`. O log do #112 provou que os 24 pacotes e **12 cores** já
+     estavam instalados — só a verificação falhava.
+- Também: `concurrency` (um build por ref, cancela o anterior — cheguei a 4 runs em
+  paralelo), passo de **Preflight** que valida nome de variante, manifesto, cada pacote
+  contra o índice arm64 e os arquivos de overlay **em segundos**, e correção de um erro
+  de YAML meu (`:` no `name:`).
+- Testado sem hardware: launcher do RetroArch com binários falsos — rotação por modelo
+  (X55 → `rotate-90`, X35S → `normal`), valor explícito vencendo o modelo, fallback
+  wayland → drm via `--appendconfig`, falha total saindo 1 e binário ausente com
+  mensagem no log.
+- **Pendente / próximo:** o build **#116** (`retroarch-v0.6`) não terminou; ver se deu
+  `success` e, em caso positivo, testar no aparelho (boot, rotação, áudio, joypad e
+  cores no menu). Se falhar, o Preflight diz o motivo sem compilar. No X35H falta o
+  teste do pendrive para decidir se a porta é host-only.
 
