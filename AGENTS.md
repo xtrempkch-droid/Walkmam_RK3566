@@ -138,6 +138,34 @@ Fix (no CI): **gerar** o `rtl_bt/rtl8821cs_config.bin` com 25 bytes — assinatu
 
 Não troque esse arquivo por um renomeado do 8821C: volta a quebrar.
 
+### 4.4 Variantes: `kodi` (multimídia) e `retroarch` (jogos)
+
+O mesmo kernel/DTB gera **duas imagens**. O que muda é o rootfs e o serviço do `tty1`.
+A variante é escolhida no `workflow_dispatch` (input `variant`); **push na `main` constrói
+`kodi`**, que é o que se usa para testar no aparelho.
+
+* `variants/kodi/` — Kodi + Weston + add-on de rádio.
+* `variants/retroarch/` — RetroArch + cores + Weston, sem add-on (rádio pelo painel web).
+
+Detalhes em [docs/variantes.md](docs/variantes.md). Pontos que custam tempo se esquecidos:
+
+1. **Nomes de driver do RetroArch 1.14** (o do bookworm): `video_driver = "gl"` +
+   **`video_context_driver = "wayland"`** (Wayland é contexto, não driver); KMS/DRM é
+   `video_driver = "drm"` + `video_context_driver = "kms"` (no 1.17+ virou `kmsdrm`).
+   E **não existe `--video-driver`** nessa versão: para trocar driver use
+   `--appendconfig <arquivo>`.
+2. O build **descobre** o diretório dos cores (`/usr/lib/<triple>/libretro`) em vez de
+   chutar, e falha se houver menos de 5 cores ou se o `libretro_directory` não tiver
+   sido substituído no `retroarch.cfg`.
+3. A rotação/Weston saiu para `common/overlay/usr/local/share/walkmam/display.sh`
+   (fonte única). **O launcher do Kodi ainda tem a cópia inline** — foi validado em
+   hardware assim; ao mexer nele, migre para o helper.
+4. `dump-diagnostico.sh`, `radio-retry.sh`, `usb-watch.sh` e o painel web ainda moram em
+   `variants/kodi/overlay/` embora sejam compartilhados. Funciona, mas o lugar certo é
+   `common/overlay/`; mover exige atualizar todos os `install` do workflow.
+5. N64 (`mupen64plus-next`) e PSP (`ppsspp`) existem para arm64 mas **não** entram por
+   padrão: desempenho não medido no RK3566.
+
 ## 5. Como construir
 
 **Nuvem (fluxo completo):** Actions → *Build Mainline RK3566 (Powkiddy X55) OS* →
@@ -358,3 +386,23 @@ dispare um commit vazio (`git commit --allow-empty`) para gerar a imagem.
   pendrive produzir evidência.
 - Pendente / próximo: o usuário plugar um pendrive e devolver `usb-watch.log`. Isso
   define se o SSH na X35H será por dongle USB-Ethernet ou se a porta não tem dados.
+
+### 2026-10-24 (3) — Copilot (variante `retroarch`)
+
+- Fez: criou a variante **`retroarch`** (versão de jogos) ao lado da `kodi` (multimídia).
+  O workflow ganhou o input `variant` (push na main continua `kodi`), os pacotes saem de
+  `variants/retroarch/packages/retroarch.list`, o build descobre o diretório real dos
+  cores e gera o `retroarch.cfg` a partir de um modelo (com asserção), cria
+  `/storage/{roms,saves,states,screenshots,bios}` e habilita `retroarch.service` no tty1.
+  Artefato próprio: `rk3566-x55-retroarch-sdcard-image` (o nome do kodi não mudou).
+- Extraiu a rotação/start do Weston para `common/overlay/.../display.sh` (fonte única) e
+  o novo launcher a consome; o launcher do Kodi ficou intocado de propósito.
+- Conferido no fonte do RetroArch 1.14 (não por suposição): wayland é
+  `video_context_driver`, o driver KMS/DRM se chama `drm` (não `kmsdrm`) e **não existe**
+  `--video-driver` nessa versão. Tudo isso está documentado e comentado no código, porque
+  é o tipo de erro que só aparece na tela preta.
+- `dump-diagnostico.sh` passou a registrar `retroarch-start.log`, a config efetiva, os
+  cores instalados e o `usb-watch.log`.
+- Pendente / próximo: **nada disso foi testado em hardware**; o primeiro teste precisa
+  confirmar boot, rotação e áudio no RetroArch, e se o joypad ROCKNIX é reconhecido.
+

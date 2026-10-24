@@ -292,3 +292,13 @@ compilação; o `diagnostico.txt` mostra o que aconteceu no aparelho.
 > Para levar estas placas a outro sistema, use
 > **[Hardware e drivers por dispositivo](hardware-e-drivers.md)** (arquitetura + receitas
 > F1–F11 de correção).
+
+## Variantes
+
+| Variante | Artefato | Estado |
+| --- | --- | --- |
+| `kodi` (multimídia) | `rk3566-x55-mainline-sdcard-image` | validada no X55 e X35H |
+| `retroarch` (jogos) | `rk3566-x55-retroarch-sdcard-image` | **implementada, não testada em hardware** |
+
+Escolha no `Run workflow` (input `variant`); push na `main` constrói `kodi`. Detalhes em
+[variantes.md](variantes.md).

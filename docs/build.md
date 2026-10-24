@@ -108,7 +108,11 @@ hardware (VBUS/ID da porta) ou o PHY. O script do diagnóstico vem de
 
 ```sh
 build/build.sh powkiddy-x55 kodi
+build/build.sh powkiddy-x55 retroarch
 ```
+
+`kodi` é a variante de multimídia e `retroarch` a de jogos; o que muda entre elas
+(pacotes, serviço do tty1, artefato) está em [variantes.md](variantes.md).
 
 O script espera por `uboot/idbloader.img`, `uboot/u-boot.itb`, `kernel/arch/arm64/boot/Image`, o DTB indicado em `devices/<device>/device.conf` e uma árvore `rootfs/` que contenha o sistema da variante. `variant.conf` declara `status` e o caminho relativo do manifesto de pacotes; variantes planejadas sem implementação não podem ser empacotadas. É possível substituir os diretórios com `WALKMAN_UBOOT_DIR`, `WALKMAN_KERNEL_DIR`, `WALKMAN_ROOTFS_DIR`, `WALKMAN_OUTPUT_DIR` e o DTB com `WALKMAN_DTB_SOURCE`. Caminhos relativos são resolvidos a partir da raiz do repositório. A criação de partições exige `sudo` e as ferramentas `dd`, `parted`, `losetup`, `mkfs.vfat`, `mkfs.ext4` e `gzip`.
 

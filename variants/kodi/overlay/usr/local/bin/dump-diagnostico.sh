@@ -95,6 +95,27 @@ capture() {
   echo "----- /boot/kodi-start.log (saida do Kodi; motivo da saida) -----"
   cat /boot/kodi-start.log 2>&1 || echo "(arquivo nao existe: o Kodi nao chegou a rodar?)"
   echo
+  echo "----- /boot/retroarch-start.log (variante retroarch) -----"
+  cat /boot/retroarch-start.log 2>&1 || echo "(nao existe: imagem kodi ou o RetroArch nao rodou)"
+  echo
+  echo "----- RetroArch: configuracao efetiva (variante retroarch) -----"
+  for cfg in /root/.config/retroarch/retroarch.cfg; do
+    [ -r "$cfg" ] || continue
+    printf '%s:\n' "$cfg"
+    grep -E '^(video_driver|video_context_driver|audio_driver|libretro_directory|libretro_info_path|menu_driver)' "$cfg"
+  done
+  echo
+  echo "----- RetroArch: cores instalados -----"
+  for d in /usr/lib/*/libretro /usr/lib/libretro; do
+    [ -d "$d" ] || continue
+    printf '%s: %s core(s)\n' "$d" "$(ls -1 "$d"/*.so 2>/dev/null | wc -l)"
+    ls -1 "$d"/*.so 2>/dev/null | xargs -r -n1 basename | tr '\n' ' '
+    echo
+  done
+  echo
+  echo "----- /boot/usb-watch.log (estado do USB a cada mudanca) -----"
+  cat /boot/usb-watch.log 2>&1 || echo "(nao existe)"
+  echo
   echo "----- /boot/weston-falhou.log (se o Weston morreu) -----"
   cat /boot/weston-falhou.log 2>&1 || echo "(nao existe)"
   echo "----- /var/log/weston.log (procure Invalid transform) -----"

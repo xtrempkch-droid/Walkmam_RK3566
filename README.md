@@ -36,7 +36,11 @@ docs/                     build, arquitetura e porting
 | `powkiddy-x35s` | Powkiddy X35S | DTS/DTB de referência ROCKNIX; em investigação |
 | `powkiddy-x35h` | Powkiddy X35H | Sem DTS/DTB independente validado |
 
-A variante atualmente configurada é `kodi` (Debian Bookworm + Weston/Wayland). Uma única imagem atende os três aparelhos: o device tree e a rotação mudam por arquivo no cartão (`extlinux/extlinux.conf.*` e `walkmam.conf`), sem recompilar. O teste no Powkiddy X55 revelou tela preta com erros no caminho DSI/VOP; o workflow desabilita HDMI como workaround experimental, conforme `docs/build.md`. Valores de pinagem, GPIO e display não são inferidos; consulte `docs/porting.md` antes de adicionar hardware.
+O projeto tem **duas variantes** (o mesmo kernel/DTB, mudando o que entra no rootfs):
+**`kodi`** (multimídia) e **`retroarch`** (jogos). Detalhes, como escolher no build e
+as armadilhas de driver em [docs/variantes.md](docs/variantes.md).
+
+A variante padrão do build é `kodi` (Debian Bookworm + Weston/Wayland). Uma única imagem atende os três aparelhos: o device tree e a rotação mudam por arquivo no cartão (`extlinux/extlinux.conf.*` e `walkmam.conf`), sem recompilar. O teste no Powkiddy X55 revelou tela preta com erros no caminho DSI/VOP; o workflow desabilita HDMI como workaround experimental, conforme `docs/build.md`. Valores de pinagem, GPIO e display não são inferidos; consulte `docs/porting.md` antes de adicionar hardware.
 
 `variants/own/` permanece como scaffold planejado: não contém pacotes nem overlay instalável e o empacotador recusa essa variante até que seja implementada.
 
@@ -96,6 +100,7 @@ que foi verificado em hardware e o que ainda é hipótese.
 
 - [Estado do projeto e retomada](docs/status.md) — comece por aqui
 - [Fluxo de build](docs/build.md)
+- [Variantes: `kodi` (multimídia) e `retroarch` (jogos)](docs/variantes.md)
 - [Hardware e drivers por dispositivo (referência de portabilidade)](docs/hardware-e-drivers.md) — o que copiar para levar o aparelho a outro sistema
 - [Descobertas de hardware (confirmado/hipótese)](docs/findings.md)
 - [Roadmap](docs/roadmap.md)

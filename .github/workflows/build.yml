@@ -4,6 +4,20 @@ on:
   push:
     branches: [ "main" ]
   workflow_dispatch:
+    inputs:
+      variant:
+        description: "Variante da imagem (kodi = multimidia, retroarch = jogos)"
+        type: choice
+        options:
+          - kodi
+          - retroarch
+        default: kodi
+
+# A variante escolhe quais pacotes/serviços entram no rootfs e o nome do
+# artefato. Push na main constrói a padrão (kodi) para não quebrar o fluxo
+# que já é usado para testar no aparelho.
+env:
+  VARIANT: ${{ github.event.inputs.variant || 'kodi' }}
 
 jobs:
   build-os:
@@ -658,58 +672,133 @@ jobs:
         sudo bash -c 'echo "LABEL=BOOT /boot vfat defaults 0 0" >> rootfs/etc/fstab'
         sudo mkdir -p rootfs/boot
 
-        echo "--> Instalando Kodi (GBM, sem X11) e dependências gráficas/áudio..."
-        sudo chroot rootfs bash -c '
-          export DEBIAN_FRONTEND=noninteractive
-          apt-get install -y --no-install-recommends \
-            kodi kodi-bin kodi-peripheral-joystick \
-            weston \
-            libgl1-mesa-dri libegl-mesa0 libgbm1 libgles2 libinput10 \
-            evtest \
-            alsa-utils dbus ca-certificates
-          apt-get clean
-          rm -rf /var/lib/apt/lists/*
-        '
+        echo "--> Variante desta imagem: $VARIANT"
 
-        echo "--> Instalando o mapa de controles do gamepad ROCKNIX do X55 no Kodi..."
+        # Helper compartilhado de display (rotação + start do Weston). É fonte
+        # única dessa lógica; as variantes o consomem em vez de copiar.
+        echo "--> Instalando o helper compartilhado de display (rotação/Weston)..."
         sudo install -D -m 0644 \
-          variants/kodi/overlay/usr/share/kodi/addons/peripheral.joystick/resources/buttonmaps/xml/linux/retrogame_joypad_17b_4a.xml \
-          rootfs/usr/share/kodi/addons/peripheral.joystick/resources/buttonmaps/xml/linux/retrogame_joypad_17b_4a.xml
+          common/overlay/usr/local/share/walkmam/display.sh \
+          rootfs/usr/local/share/walkmam/display.sh
 
-        echo "--> Configurando Weston para girar somente a sessão Kodi em DSI-1..."
-        sudo install -D -m 0644 \
-          variants/kodi/overlay/etc/xdg/weston/weston.ini \
-          rootfs/etc/xdg/weston/weston.ini
-        sudo install -D -m 0755 \
-          variants/kodi/overlay/usr/local/bin/start-kodi-wayland.sh \
-          rootfs/usr/local/bin/start-kodi-wayland.sh
-        sudo install -D -m 0644 \
-          variants/kodi/overlay/etc/systemd/system/kodi.service \
-          rootfs/etc/systemd/system/kodi.service
-        sudo chroot rootfs kodi.bin --help 2>&1 | grep -i 'windowing' || \
-          echo "(Não foi possível confirmar via --help; a sessão será iniciada em Wayland.)"
+        if [ "$VARIANT" = "kodi" ]; then
+          echo "--> [kodi] Instalando Kodi (GBM, sem X11) e dependências gráficas/áudio..."
+          sudo chroot rootfs bash -c '
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get install -y --no-install-recommends \
+              kodi kodi-bin kodi-peripheral-joystick \
+              weston \
+              libgl1-mesa-dri libegl-mesa0 libgbm1 libgles2 libinput10 \
+              evtest \
+              alsa-utils dbus ca-certificates
+            apt-get clean
+            rm -rf /var/lib/apt/lists/*
+          '
 
-        echo "--> Criando serviço Kodi em Weston/Wayland sobre DRM no tty1..."
-        sudo chroot rootfs systemctl enable kodi.service
+          echo "--> [kodi] Instalando o mapa de controles do gamepad ROCKNIX do X55..."
+          sudo install -D -m 0644 \
+            variants/kodi/overlay/usr/share/kodi/addons/peripheral.joystick/resources/buttonmaps/xml/linux/retrogame_joypad_17b_4a.xml \
+            rootfs/usr/share/kodi/addons/peripheral.joystick/resources/buttonmaps/xml/linux/retrogame_joypad_17b_4a.xml
 
-        echo "--> Instalando o add-on Walkmam Radio (Wi-Fi/Bluetooth dentro do Kodi)..."
-        echo "--> O Kodi 20 no Linux NAO tem gerenciador de radio (o de Wi-Fi so"
-        echo "--> existe nos builds Windows/Android), entao o add-on chama o"
-        echo "--> nmcli (NetworkManager) e o bluetoothctl (BlueZ) direto."
-        echo "--> Fica em Add-ons > Add-ons de programas > Walkmam Radio."
-        sudo mkdir -p rootfs/usr/share/kodi/addons/script.walkmam.radio
-        sudo install -D -m 0644 \
-          variants/kodi/overlay/usr/share/kodi/addons/script.walkmam.radio/addon.xml \
-          rootfs/usr/share/kodi/addons/script.walkmam.radio/addon.xml
-        sudo install -D -m 0644 \
-          variants/kodi/overlay/usr/share/kodi/addons/script.walkmam.radio/default.py \
-          rootfs/usr/share/kodi/addons/script.walkmam.radio/default.py
-        # O add-on e script Python: se nao compilar, o Kodi falha so na hora de
-        # abrir. Checamos a sintaxe aqui para o build quebrar antes.
-        python3 -m py_compile \
-          variants/kodi/overlay/usr/share/kodi/addons/script.walkmam.radio/default.py \
-          && echo "--> script.walkmam.radio: sintaxe Python ok" \
-          || { echo "!!! default.py com erro de sintaxe" >&2; exit 1; }
+          echo "--> [kodi] Serviço Kodi em Weston/Wayland sobre DRM no tty1..."
+          sudo install -D -m 0755 \
+            variants/kodi/overlay/usr/local/bin/start-kodi-wayland.sh \
+            rootfs/usr/local/bin/start-kodi-wayland.sh
+          sudo install -D -m 0644 \
+            variants/kodi/overlay/etc/systemd/system/kodi.service \
+            rootfs/etc/systemd/system/kodi.service
+          sudo install -D -m 0644 \
+            variants/kodi/overlay/etc/xdg/weston/weston.ini \
+            rootfs/etc/xdg/weston/weston.ini
+          sudo chroot rootfs kodi.bin --help 2>&1 | grep -i 'windowing' || \
+            echo "(Não foi possível confirmar via --help; a sessão será iniciada em Wayland.)"
+          sudo chroot rootfs systemctl enable kodi.service
+
+          echo "--> [kodi] Instalando o add-on Walkmam Radio (Wi-Fi/Bluetooth no Kodi)..."
+          echo "--> O Kodi 20 no Linux NAO tem gerenciador de radio (o de Wi-Fi so"
+          echo "--> existe nos builds Windows/Android), entao o add-on chama o"
+          echo "--> nmcli (NetworkManager) e o bluetoothctl (BlueZ) direto."
+          echo "--> Fica em Add-ons > Add-ons de programas > Walkmam Radio."
+          sudo mkdir -p rootfs/usr/share/kodi/addons/script.walkmam.radio
+          sudo install -D -m 0644 \
+            variants/kodi/overlay/usr/share/kodi/addons/script.walkmam.radio/addon.xml \
+            rootfs/usr/share/kodi/addons/script.walkmam.radio/addon.xml
+          sudo install -D -m 0644 \
+            variants/kodi/overlay/usr/share/kodi/addons/script.walkmam.radio/default.py \
+            rootfs/usr/share/kodi/addons/script.walkmam.radio/default.py
+          # O add-on e script Python: se nao compilar, o Kodi falha so na hora de
+          # abrir. Checamos a sintaxe aqui para o build quebrar antes.
+          python3 -m py_compile \
+            variants/kodi/overlay/usr/share/kodi/addons/script.walkmam.radio/default.py \
+            && echo "--> script.walkmam.radio: sintaxe Python ok" \
+            || { echo "!!! default.py com erro de sintaxe" >&2; exit 1; }
+        fi
+
+        if [ "$VARIANT" = "retroarch" ]; then
+          echo "--> [retroarch] Instalando RetroArch, assets e cores do Debian..."
+          echo "--> A lista vem de variants/retroarch/packages/retroarch.list (uma por"
+          echo "--> linha, # comenta), para não duplicar nomes de pacote no workflow."
+          LISTA=variants/retroarch/packages/retroarch.list
+          PACOTES=$(sed -e 's/#.*//' -e 's/[[:space:]]//g' "$LISTA" | grep -v '^$' | tr '\n' ' ')
+          echo "--> pacotes: $PACOTES"
+          sudo chroot rootfs bash -c '
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get install -y --no-install-recommends '"$PACOTES"'
+            apt-get clean
+            rm -rf /var/lib/apt/lists/*
+          '
+
+          echo "--> [retroarch] Conferindo o binário e descobrindo onde os cores caíram."
+          echo "--> (O Debian instala em /usr/lib/<triple>/libretro; não chutamos o"
+          echo "--> caminho: descobrimos e escrevemos o valor real no retroarch.cfg.)"
+          RETROARCH_BIN=$(sudo chroot rootfs sh -c 'command -v retroarch' || true)
+          if [ -z "$RETROARCH_BIN" ]; then
+            echo "!!! retroarch nao foi instalado" >&2
+            exit 1
+          fi
+          LIBRETRO_DIR=$(sudo chroot rootfs sh -c '
+            for d in /usr/lib/*/libretro /usr/lib/libretro; do
+              [ -d "$d" ] && { echo "$d"; exit 0; }
+            done
+            exit 1
+          ')
+          if [ -z "$LIBRETRO_DIR" ]; then
+            echo "!!! diretorio de cores libretro nao encontrado no rootfs" >&2
+            exit 1
+          fi
+          echo "--> retroarch: $RETROARCH_BIN | cores: $LIBRETRO_DIR"
+          QTD_CORES=$(sudo chroot rootfs sh -c "ls -1 $LIBRETRO_DIR/*.so 2>/dev/null | wc -l")
+          echo "--> cores instalados: $QTD_CORES"
+          if [ "$QTD_CORES" -lt 5 ]; then
+            echo "!!! poucos cores ($QTD_CORES): a lista de pacotes mudou?" >&2
+            exit 1
+          fi
+          echo "--> amostra: $(sudo chroot rootfs sh -c "ls -1 $LIBRETRO_DIR/*.so | head -3 | xargs -n1 basename | tr '\n' ' '")"
+
+          echo "--> [retroarch] Escrevendo o retroarch.cfg (com o caminho real dos cores)..."
+          sudo mkdir -p rootfs/root/.config/retroarch
+          sed "s|@LIBRETRO_DIR@|$LIBRETRO_DIR|" \
+            variants/retroarch/overlay/etc/walkmam/retroarch.cfg \
+            | sudo tee rootfs/root/.config/retroarch/retroarch.cfg >/dev/null
+          if ! grep -q "^libretro_directory = \"$LIBRETRO_DIR\"" rootfs/root/.config/retroarch/retroarch.cfg; then
+            echo "!!! libretro_directory nao foi substituido no retroarch.cfg" >&2
+            exit 1
+          fi
+
+          echo "--> [retroarch] Diretórios de ROMs/saves/bios..."
+          sudo mkdir -p rootfs/storage/roms \
+            rootfs/storage/saves rootfs/storage/states \
+            rootfs/storage/screenshots rootfs/storage/bios
+
+          echo "--> [retroarch] Serviço no tty1 (Weston aplica a rotação)..."
+          sudo install -D -m 0755 \
+            variants/retroarch/overlay/usr/local/bin/start-retroarch.sh \
+            rootfs/usr/local/bin/start-retroarch.sh
+          sudo install -D -m 0644 \
+            variants/retroarch/overlay/etc/systemd/system/retroarch.service \
+            rootfs/etc/systemd/system/retroarch.service
+          sudo chroot rootfs systemctl enable retroarch.service
+        fi
 
         echo "--> Instalando o painel web (Wi-Fi/Bluetooth) na porta 8088..."
         echo "--> O Kodi não gerencia rádio; o painel fica acessível em"
@@ -767,10 +856,19 @@ jobs:
 
     - name: Create SD Card Image (.img)
       run: |
-        sudo bash << 'EOF'
+        # sudo limpa o ambiente, então a variante vai explícita para dentro do
+        # script (senão o nome da imagem sairia sempre com o padrão).
+        sudo env VARIANT="$VARIANT" bash << 'EOF'
         set -e
 
-        IMAGE_NAME="rk3566-x55-mainline-sdcard.img"
+        # kodi mantém o nome histórico do artefato (é o que já se usa para testar
+        # no aparelho); as demais variantes ganham o próprio nome.
+        if [ "${VARIANT:-kodi}" = "kodi" ]; then
+          IMAGE_NAME="rk3566-x55-mainline-sdcard.img"
+        else
+          IMAGE_NAME="rk3566-x55-${VARIANT}-sdcard.img"
+        fi
+        echo "--> imagem: $IMAGE_NAME (variante ${VARIANT:-kodi})"
         IMAGE_SIZE_MB=4096
 
         echo "--> Criando arquivo de imagem vazio (${IMAGE_SIZE_MB}MB)..."
@@ -919,8 +1017,10 @@ jobs:
 
         echo "--> Criando extlinux.conf ativo para a Powkiddy X55 (aparelho em teste)..."
         mkdir -p /mnt/boot/extlinux
-        cat << "BOOTCFG" > /mnt/boot/extlinux/extlinux.conf
-        LABEL Walkmam (Powkiddy X55 - Kodi)
+        # Sem aspas no delimitador para expandir $VARIANT (senão o rótulo diria
+        # sempre "Kodi", mesmo na imagem de jogos).
+        cat << BOOTCFG > /mnt/boot/extlinux/extlinux.conf
+        LABEL Walkmam (Powkiddy X55 - ${VARIANT:-kodi})
             KERNEL /Image
             FDT /dtbs/rk3566-powkiddy-x55.dtb
             APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw walkmam_x55_gamepad=rocknix-v1
@@ -984,10 +1084,12 @@ jobs:
     - name: Prepare Output Directory
       run: |
         mkdir -p output
-        mv rk3566-x55-mainline-sdcard.img.gz output/
+        mv ./*.img.gz output/
 
     - name: Upload SD Card Image Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: rk3566-x55-mainline-sdcard-image
-        path: output/rk3566-x55-mainline-sdcard.img.gz
+        # Nome por variante: kodi mantém o histórico (é o que o aparelho usa para
+        # testar) e retroarch ganha o seu, para não confundir as duas imagens.
+        name: ${{ env.VARIANT == 'kodi' && 'rk3566-x55-mainline-sdcard-image' || format('rk3566-x55-{0}-sdcard-image', env.VARIANT) }}
+        path: output/*.img.gz

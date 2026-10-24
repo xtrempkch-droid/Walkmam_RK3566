@@ -1,0 +1,46 @@
+# Pacotes da variante "retroarch" (versão de jogos).
+#
+# Nomes conferidos no Debian 12 (bookworm), arm64. Os cores ficam em
+# /usr/lib/<triple>/libretro e os metadados em /usr/share/libretro/info —
+# o build descobre o caminho real e o grava no retroarch.cfg.
+#
+# Escolha dos cores: consoles que rodam bem no RK3566 (Cortex-A55, 2 GB).
+# N64 e PSP existem no bookworm (libretro-mupen64plus-next, libretro-ppsspp),
+# mas NÃO estão incluídos porque o desempenho não foi validado neste hardware.
+# Para incluir, basta acrescentar o nome do pacote aqui.
+
+retroarch
+retroarch-assets
+libretro-core-info
+
+# Consoles de 8 e 16 bits
+libretro-fceumm
+libretro-nestopia
+libretro-snes9x
+libretro-gambatte
+libretro-mgba
+libretro-genesisplusgx
+libretro-beetle-pce-fast
+
+# PlayStation 1 (não precisa de BIOS)
+libretro-pcsx-rearmed
+
+# Ambiente gráfico e áudio (mesmos pacotes do Kodi: já validados no aparelho)
+weston
+libgl1-mesa-dri
+libegl-mesa0
+libgbm1
+libgles2
+libinput10
+evtest
+alsa-utils
+dbus
+ca-certificates
+
+# Rádio (o RetroArch também não tem UI de Wi-Fi/BT; o painel web :8088 usa isto)
+wpasupplicant
+iw
+wireless-tools
+rfkill
+bluez
+busybox
