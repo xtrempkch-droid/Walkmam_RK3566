@@ -201,6 +201,15 @@ hipótese como fato ao portar outra placa.
   porches/clock fora do ideal, gerando ajuste fino na controladora; (b) alguma opção
   de proporção/overscan do Kodi (pixel ratio / "Ajustar exibição"); (c) o painel físico
   não ter exatamente a proporção do modo declarado.
+- **Medição (2026-10-24):** o driver mainline declara, para o painel da X55,
+  `width_mm = 67`, `height_mm = 121` e modo `720x1280`. Proporções:
+  **67/121 = 0,5537** (físico) contra **720/1280 = 0,5625** (modo) → pixel levemente
+  não quadrado, **~1,6% mais largo que alto**. Isso explica o "esticado de leve para os
+  lados" sem nenhum erro de escala do Weston/Kodi. É característica do painel, não bug
+  de software; só um escalonamento não uniforme (~0,984 na horizontal) compensaria, e
+  nenhum dos dois oferece isso de forma suportada.
+- **Como confirmar em 1 minuto:** exibir no Kodi uma imagem com um quadrado perfeito
+  em tela cheia; se ele parecer ~1,6% mais largo que alto, a medição fecha.
 - **Onde olhar primeiro:** `/sys/class/drm/card0-DSI-1/modes` (só 720x1280), o log do
   Weston com `transform=rotate-90` e, no Kodi, `Settings → System → Display →
   Pixel ratio`/overscan. Não alterar timing do painel sem fonte confirmada.
