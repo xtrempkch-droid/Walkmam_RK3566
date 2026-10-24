@@ -157,8 +157,8 @@ hipótese como fato ao portar outra placa.
 - **Onde os firmwares estão:** o Debian não os traz no rootfs mínimo; o CI baixa do
   `linux-firmware` na tag **20260309** (a mesma que a ROCKNIX usa) com **sha256
   conferido** e instala em `/lib/firmware`. O upstream **não tem**
-  `rtl8821cs_config.bin`; usamos a config do 8821C (10 bytes) com o nome esperado pelo
-  driver — o kernel avisa `no UART config entry found`, mas carrega o firmware.
+  `rtl8821cs_config.bin` (ver a seção de Bluetooth abaixo: o CI agora **gera** o
+  arquivo).
 - **Teste ao vivo (imagem #94):** com firmware + `wpa_supplicant` instalados,
   `wlan0` sobe e o scan lista redes (`nmcli dev wifi list`). **Porém o probe do boot
   falha**: o kernel carrega o firmware (`Firmware version 24.11.0`) e depois dá
@@ -169,13 +169,26 @@ hipótese como fato ao portar outra placa.
   `no-mmc; no-sd; sd-uhs-sdr50;`. É exatamente o remédio para esses timeouts. O nosso
   workflow **não aplicava** esse patch porque só copiava arquivos com `x55`/`x35` no
   **nome**. Agora o build adiciona essas propriedades no DTS da X55.
-- **Bluetooth:** o chip responde (`examining hci_ver=08 ... lmp_subver=8821`) e carrega
-  `rtl8821cs_fw.bin` + config, mas o controlador **não inicializa** (BD address
-  `00:00:00:00:00:00`, BlueZ diz "No default controller available"). O boot mostra
-  `of_dma_request_slave_channel: dma-names property of node '/serial@fe650000' missing
-  or empty`. O patch `0021-arm64-dts-rockchip-fix-missing-dma-names.patch` da ROCKNIX
-  adiciona `dma-names = "tx", "rx";` ao `uart1` — agora aplicado como override no DTS.
-  O aviso `RTL: no UART config entry found` vem do caminho H5 e é inofensivo no H4.
+- **Bluetooth (causa raiz e fix, confirmado no aparelho em 2026-10-24):** o BT é
+  **UART no `uart1`** com `compatible = "realtek,rtl8821cs-bt", "realtek,rtl8723bs-bt"`.
+  O kernel não tem driver para `rtl8821cs-bt`; quem casa é o fallback
+  `realtek,rtl8723bs-bt` do `hci_h5` (**three-wire**), que usa o `btrtl` para baixar o
+  firmware. O `h5_btrtl_setup()` chama `btrtl_get_uart_settings()`, que exige no
+  `rtl8821cs_config.bin` uma entrada de offset **0x0c** (baudrate + flow control).
+  O arquivo que o upstream publica com esse nome **não existe**; o `rtl8821c_config.bin`
+  (10 bytes) renomeado não tem essa entrada → `RTL: no UART config entry found` →
+  `-ENOENT` → o setup aborta e o `hci0` fica com `BD Address 00:00:00:00:00:00`
+  ("No default controller available").
+  - **Fix:** o CI gera o `rtl_bt/rtl8821cs_config.bin` (25 bytes) com assinatura
+    `0x8723ab55`, uma entrada `0x0c` de 16 bytes, baudrate `0x04928002` (1500000) e
+    `data[12] = 0x5f` (bit 2 = flow control, coerente com o `uart-has-rtscts` do
+    `uart1`). Os demais bytes seguem o padrão da família (comparados com os configs
+    reais do 8723BS e do 8822CS do `linux-firmware`).
+  - **Resultado:** `RTL: fw version 0x75b8f098`, `hci0` com endereço real
+    (`A8:4F:A4:C9:98:4C`), `UP RUNNING`, nome `rk3566-x55`, e o scan lista
+    dispositivos. Confirmado também **depois de reboot** — sobe sozinho no boot.
+  - O aviso `of_dma_request_slave_channel: dma-names ... missing` (patch `0021` da
+    ROCKNIX) também já está aplicado como override no DTS.
 - **Painel web validado no aparelho (#94):** subindo `index.html` + CGIs + serviço
   manualmente depois do boot, do PC sobre o cabo USB deu `HTTP 200` no índice,
   `wifi.sh?action=status` e `action=scan` retornaram JSON correto (redes listadas) e

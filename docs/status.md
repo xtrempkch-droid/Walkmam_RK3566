@@ -28,8 +28,10 @@ está pronto, o que ainda é **hipótese** e exatamente o que testar e devolver.
 
 | Run | Commit | Resultado | Observação |
 | --- | --- | --- | --- |
+| #98 | BT config gerado | **a rodar** | corrige o Bluetooth (config UART do 8821CS gerado no build) |
+| #97 | `cbafb85` (docs stretch) | **success** | imagem testada: Wi-Fi ok no boot; BT ainda sem address |
 | #96 | `7e82e19` (DTS wifi/bt) | **success** | fixes de SDIO (0004) e `dma-names` uart1 (0021) + retry; base do #97 |
-| #94 | `0c9eb64` (Wi-Fi/BT + :8088) | **success** | artefato 356 MB: Wi-Fi/BT + painel web + rotate-90; **use este** |
+| #94 | `0c9eb64` (Wi-Fi/BT + :8088) | **success** | artefato 356 MB: Wi-Fi/BT + painel web + rotate-90 |
 | #93 | `2b9da4a` (Wi-Fi/BT) | **success** | painel web ainda na 8080 (conflito com Kodi) |
 | #92 | `407fd46` (fix de fontes) | **success** | fixa U-Boot/ROCKNIX/rkbin + áudio; base do teste que validou `rotate-90` |
 | #91 | `0a7ffb2` (áudio) | failure | ROCKNIX drift: patch X35S usa `&gpio_keys_control` (não existe no mainline 6.12) |
@@ -133,8 +135,8 @@ aparelhos, trocando o `FDT` no `extlinux.conf`.
 | Sentido da rotação no X55 | **confirmado no aparelho: `rotate-90`** |
 | Contagem de botões/eixos na X35H | **não medido** |
 | Áudio (I2S habilitado no #92) | **a validar** no aparelho |
-| Wi-Fi RTL8821CS | firmware/wpa_supplicant ok; probe do boot falhava (SDIO -110) → fix do patch ROCKNIX 0004 no DTS |
-| Bluetooth RTL8821CS | firmware carrega, mas controller não inicializa → `dma-names` no uart1 (ROCKNIX 0021) **a validar** |
+| Wi-Fi RTL8821CS | **confirmado no #97**: `wlan0` sobe no boot sem retry (fix SDIO 0004 + `dma-names` uart1 no DTS) |
+| Bluetooth RTL8821CS | **confirmado em 2026-10-24**: faltava o `rtl8821cs_config.bin` com a entrada UART `0x0c`; o CI agora gera o arquivo → `hci0` com MAC real, `UP`, scan ok, e sobe no boot |
 | Painel web de Wi-Fi/BT na porta 8088 | **implementado** e testado localmente (busybox httpd) |
 | Vídeo por hardware (`va_openDriver() returns -1`) | **aberto** |
 

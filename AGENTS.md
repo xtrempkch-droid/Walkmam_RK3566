@@ -80,6 +80,28 @@ Se voltar a falhar: o motivo fica em **`/boot/kodi-start.log`** e na **tela (tty
   variante de teste `extlinux.conf.x35s-peripheral` (USB forçado a *device*).
 - O gadget não faz DHCP — se o PC ficar em 169.254.x.x, é isso.
 
+### 4.3 Bluetooth do X55 não inicializava — RESOLVIDO (2026-10-24)
+
+Sintoma: `hci0` existe, mas com `BD Address 00:00:00:00:00:00`; `bluetoothctl show`
+responde "No default controller available"; `dmesg` mostra
+`RTL: no UART config entry found`.
+
+Causa: o BT é UART no `uart1` com `compatible = "realtek,rtl8821cs-bt",
+"realtek,rtl8723bs-bt"`. Não existe driver para `rtl8821cs-bt`; casa o **`hci_h5`**
+(three-wire) pelo fallback `rtl8723bs-bt`. O `h5_btrtl_setup()` chama
+`btrtl_get_uart_settings()`, que **exige** no `rtl8821cs_config.bin` uma entrada de
+offset **0x0c** (baudrate + flow control). O `linux-firmware` **não publica** esse
+arquivo; o `rtl8821c_config.bin` (10 bytes) renomeado não tem a entrada → `-ENOENT` →
+o setup aborta antes de baixar o firmware.
+
+Fix (no CI): **gerar** o `rtl_bt/rtl8821cs_config.bin` com 25 bytes — assinatura
+`0x8723ab55`, `total_len=0x13`, uma entrada `0x0c` de 16 bytes com baudrate
+`0x04928002` (1500000) e `data[12]=0x5f` (bit 2 = flow control, casa com o
+`uart-has-rtscts` do `uart1`). Validado: `RTL: fw version 0x75b8f098`, MAC real,
+`UP RUNNING`, scan listando dispositivos e **sobe sozinho depois de reboot**.
+
+Não troque esse arquivo por um renomeado do 8821C: volta a quebrar.
+
 ## 5. Como construir
 
 **Nuvem (fluxo completo):** Actions → *Build Mainline RK3566 (Powkiddy X55) OS* →
@@ -186,3 +208,15 @@ caminho oficial; o rootfs Debian e a montagem da imagem exigem `sudo`.
 - **Próximos itens abertos:** validar o **áudio** no #92, VA-API
   (`rockchip_drv_video.so` ausente) e o **sentido visual** da rotação
   (`rotate-90` validado).
+
+### 2026-10-24 — Copilot (Bluetooth do X55)
+
+- Fez: fechou a causa raiz do Bluetooth (config UART `0x0c` ausente no
+  `rtl8821cs_config.bin`). O CI passou a **gerar** o arquivo (25 bytes) em vez de
+  renomear o do 8821C; conferido por sha256 no build. Validado ao vivo no aparelho com
+  build #97 (trocando o arquivo e recarregando o `hci_uart`): firmware baixa
+  (`fw version 0x75b8f098`), `hci0` com MAC real, `UP RUNNING`, scan acha dispositivos,
+  e depois de **reboot** sobe sozinho. Wi-Fi também confirmado no boot sem retry.
+- Pendente / próximo: gravar a imagem nova (#98) e validar áudio no aparelho; o
+  esticamento horizontal de ~1,6% é do painel (67x121 mm vs modo 720x1280).
+

@@ -530,8 +530,15 @@ jobs:
         echo "--> Firmwares do Wi-Fi/BT do X55 (RTL8821CS)."
         echo "--> O kernel pede rtw88/rtw8821c_fw.bin e rtl_bt/rtl8821cs_fw.bin."
         echo "--> Nao vem no Debian: baixamos do linux-firmware, fixado na tag $LINUX_FW_TAG,"
-        echo "--> e conferimos o sha256. O upstream nao tem rtl8821cs_config.bin; o proprio"
-        echo "--> driver aceita a config do 8821C (avisa 'no UART config entry found')."
+        echo "--> e conferimos o sha256."
+        echo "-->"
+        echo "--> O rtl_bt/rtl8821cs_config.bin NAO existe no linux-firmware. Usar o"
+        echo "--> rtl8821c_config.bin renomeado (10 bytes) NAO funciona: ele nao tem a"
+        echo "--> entrada 0x0c (UART) e o btrtl aborta com 'no UART config entry found',"
+        echo "--> deixando o hci0 sem endereco ('No default controller available')."
+        echo "--> Geramos o config aqui: assinatura 0x8723ab55 + uma entrada de offset"
+        echo "--> 0x0c com 16 bytes, baudrate 0x04928002 (1500000) e data[12]=0x5f"
+        echo "--> (bit2 = flow control, casa com o 'uart-has-rtscts' do uart1)."
         FW_BASE="https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain"
         fetch_fw() {
           url=$1; dest=$2; want=$3
@@ -548,8 +555,13 @@ jobs:
           rtw88/rtw8821c_fw.bin 2ef409bc418549fcf294061dd0cae1fc22fd9da79b60524950b25de18732f3f0
         fetch_fw "$FW_BASE/rtl_bt/rtl8821cs_fw.bin?h=$LINUX_FW_TAG" \
           rtl_bt/rtl8821cs_fw.bin 3baa2eeaa43c959054687a67771e7435e73b2ff3e79dfb765121d8b7dc719391
-        fetch_fw "$FW_BASE/rtl_bt/rtl8821c_config.bin?h=$LINUX_FW_TAG" \
-          rtl_bt/rtl8821cs_config.bin 292717b0610ce920f66b734c299d349ea59a4c4400044078d8fc65625f17e382
+        printf '\x55\xab\x23\x87\x13\x00\x0c\x00\x10\x02\x80\x92\x04\x50\xc5\xea\x19\xe1\x1b\xfd\xaf\x5f\x01\xa4\x0b' \
+          | sudo tee rootfs/lib/firmware/rtl_bt/rtl8821cs_config.bin >/dev/null
+        got=$(sha256sum rootfs/lib/firmware/rtl_bt/rtl8821cs_config.bin | cut -d" " -f1)
+        if [ "$got" != "6ddeb15f23588053e00cb08d25588bd7cf98d60fa93d9478efcef4ae8064a7ac" ]; then
+          echo "!!! rtl8821cs_config.bin inesperado: $got" >&2; exit 1
+        fi
+        echo "--> rtl_bt/rtl8821cs_config.bin ok (gerado, 25 bytes)"
 
         echo "--> Habilitando bluetooth e o painel web de gerenciamento (Wi-Fi/BT)..."
         sudo chroot rootfs systemctl enable bluetooth.service
