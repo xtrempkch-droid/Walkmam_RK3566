@@ -132,9 +132,9 @@ aparelhos, trocando o `FDT` no `extlinux.conf`.
 | Sentido da rotação no X55 | **confirmado no aparelho: `rotate-90`** |
 | Contagem de botões/eixos na X35H | **não medido** |
 | Áudio (I2S habilitado no #92) | **a validar** no aparelho |
-| Wi-Fi RTL8821CS: driver + firmware + `wpa_supplicant` | **validado ao vivo** (`wlan0`, fw 24.11.0); conexão a testar |
-| Bluetooth RTL8821CS: `hci0` + firmware carregado | **validado ao vivo**; pareamento a testar |
-| Painel web de Wi-Fi/BT na porta 8088 | **implementado** (validar na próxima imagem) |
+| Wi-Fi RTL8821CS | firmware/wpa_supplicant ok; probe do boot falhava (SDIO -110) → fix do patch ROCKNIX 0004 no DTS |
+| Bluetooth RTL8821CS | firmware carrega, mas controller não inicializa → `dma-names` no uart1 (ROCKNIX 0021) **a validar** |
+| Painel web de Wi-Fi/BT na porta 8088 | **implementado** e testado localmente (busybox httpd) |
 | Vídeo por hardware (`va_openDriver() returns -1`) | **aberto** |
 
 ## Testes a fazer (na ordem)

@@ -159,10 +159,26 @@ hipótese como fato ao portar outra placa.
   conferido** e instala em `/lib/firmware`. O upstream **não tem**
   `rtl8821cs_config.bin`; usamos a config do 8821C (10 bytes) com o nome esperado pelo
   driver — o kernel avisa `no UART config entry found`, mas carrega o firmware.
-- **Teste ao vivo (validado):** copiando os firmwares para `/lib/firmware` e
-  recarregando os módulos, apareceram `wlan0` (`Firmware version 24.11.0`) e `hci0`
-  (firmware + config carregados). O scan de Wi-Fi só funciona depois de instalar o
-  `wpa_supplicant`.
+- **Teste ao vivo (imagem #94):** com firmware + `wpa_supplicant` instalados,
+  `wlan0` sobe e o scan lista redes (`nmcli dev wifi list`). **Porém o probe do boot
+  falha**: o kernel carrega o firmware (`Firmware version 24.11.0`) e depois dá
+  `sdio read32 failed ... -110` em série e `probe with driver rtw_8821cs failed with
+  error -110`; um `modprobe -r/modprobe rtw88_8821cs` posterior faz o `wlan0` aparecer.
+- **Causa e fix (fonte confirmada, ROCKNIX):** o patch
+  `0004-arm64-dts-rockchip-fix-wifi-sdio-errors.patch` adiciona ao `&sdmmc1`:
+  `no-mmc; no-sd; sd-uhs-sdr50;`. É exatamente o remédio para esses timeouts. O nosso
+  workflow **não aplicava** esse patch porque só copiava arquivos com `x55`/`x35` no
+  **nome**. Agora o build adiciona essas propriedades no DTS da X55.
+- **Bluetooth:** o chip responde (`examining hci_ver=08 ... lmp_subver=8821`) e carrega
+  `rtl8821cs_fw.bin` + config, mas o controlador **não inicializa** (BD address
+  `00:00:00:00:00:00`, BlueZ diz "No default controller available"). O boot mostra
+  `of_dma_request_slave_channel: dma-names property of node '/serial@fe650000' missing
+  or empty`. O patch `0021-arm64-dts-rockchip-fix-missing-dma-names.patch` da ROCKNIX
+  adiciona `dma-names = "tx", "rx";` ao `uart1` — agora aplicado como override no DTS.
+  O aviso `RTL: no UART config entry found` vem do caminho H5 e é inofensivo no H4.
+- **Rede de segurança:** `walkmam-radio-retry.service` roda após o boot e, se `wlan0`
+  não existir, recarrega o módulo (até 3x); se `hci0` estiver sem endereço, reinicia o
+  `hci_uart`/BlueZ. Log em `/boot/radio-retry.log`.
 - **Gerenciamento:** o Kodi não gerencia rádio. O projeto instala um **painel web**
   (`walkmam-webui.service`, busybox httpd na porta **8088**) com scan/conexão de Wi-Fi
   (`nmcli`) e scan/pareamento de Bluetooth (`bluetoothctl`). Acesse

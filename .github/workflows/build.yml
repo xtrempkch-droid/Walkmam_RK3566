@@ -234,6 +234,26 @@ jobs:
         echo "--> e fica em 'deferred probe' para sempre (asoc-simple-card: parse error)."
         if [ -f arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x55.dts ]; then
           printf '\n&hdmi {\n\tstatus = "disabled";\n};\n&hdmi_sound {\n\tstatus = "disabled";\n};\n' >> arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x55.dts
+
+          # Fontes: patches da ROCKNIX para RK3566 (aplicados aqui como override
+          # no DTS da placa, que e equivalente e nao depende do contexto exato
+          # do patch no mainline):
+          #  - 0004-arm64-dts-rockchip-fix-wifi-sdio-errors.patch
+          #  - 0021-arm64-dts-rockchip-fix-missing-dma-names.patch
+          # Sem isso o RTL8821CS falha no boot: o Wi-Fi da timeouts de SDIO
+          # (-110) no probe e o Bluetooth nao inicializa (uart1 sem dma-names).
+          echo "--> Wi-Fi (sdmmc1): no-mmc/no-sd/sd-uhs-sdr50 (ROCKNIX 0004)."
+          echo "--> Bluetooth (uart1): dma-names tx/rx (ROCKNIX 0021)."
+          printf '%s\n' \
+            '&sdmmc1 {' \
+            '	no-mmc;' \
+            '	no-sd;' \
+            '	sd-uhs-sdr50;' \
+            '};' \
+            '' \
+            '&uart1 {' \
+            '	dma-names = "tx", "rx";' \
+            '};' >> arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x55.dts
         fi
 
         echo "--> Checando modo da porta USB (precisa ser 'otg'/'peripheral', não fixo em 'host',"
@@ -674,6 +694,15 @@ jobs:
           variants/kodi/overlay/etc/systemd/system/walkmam-webui.service \
           rootfs/etc/systemd/system/walkmam-webui.service
         sudo chroot rootfs systemctl enable walkmam-webui.service
+
+        echo "--> Instalando o retry de rádio (Wi-Fi/BT podem falhar no 1º probe)..."
+        sudo install -D -m 0755 \
+          variants/kodi/overlay/usr/local/bin/radio-retry.sh \
+          rootfs/usr/local/bin/radio-retry.sh
+        sudo install -D -m 0644 \
+          variants/kodi/overlay/etc/systemd/system/walkmam-radio-retry.service \
+          rootfs/etc/systemd/system/walkmam-radio-retry.service
+        sudo chroot rootfs systemctl enable walkmam-radio-retry.service
 
         echo "--> Conferindo os binários que o painel usa (resolve o PATH real do rootfs)..."
         if ! sudo chroot rootfs sh -c '

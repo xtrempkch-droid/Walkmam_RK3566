@@ -1,0 +1,14 @@
+[Unit]
+Description=Walkmam: retry do Wi-Fi/Bluetooth RTL8821CS apos o boot
+After=NetworkManager.service bluetooth.service
+Wants=NetworkManager.service bluetooth.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/radio-retry.sh
+RemainAfterExit=yes
+# Nao falha o boot por causa de radio.
+SuccessExitStatus=0 1
+
+[Install]
+WantedBy=multi-user.target
