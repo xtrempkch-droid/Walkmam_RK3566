@@ -271,3 +271,13 @@ dispare um commit vazio (`git commit --allow-empty`) para gerar a imagem.
 - Pendente / próximo: validar a imagem #100 no aparelho (Bluetooth + add-on com o
   teclado corrigido) e confirmar as builds.
 
+### 2026-10-24 — Copilot (imagem #100 validada no CI)
+
+- Fez: **build #100 success** (356 MB), a imagem para usar: junta o Bluetooth corrigido
+  (config UART do 8821CS gerada no build) e o add-on `script.walkmam.radio` com o
+  teclado da senha corrigido. Conferido localmente que o bloco do CI gera o
+  `rtl8821cs_config.bin` **byte-idêntico** ao validado no aparelho (sha256
+  `6ddeb15f...`) e que a instalação do add-on produz os dois arquivos certos
+  (`addon.xml` + `default.py`, registrado como `xbmc.python.script`).
+- Pendente / próximo: usuário gravar o #100 e testar Bluetooth pelo add-on e o teclado
+  da senha na TV; depois confirmar o resto (áudio já confirmado nos dois caminhos).

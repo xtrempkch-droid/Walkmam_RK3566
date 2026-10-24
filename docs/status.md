@@ -5,17 +5,18 @@ está pronto, o que ainda é **hipótese** e exatamente o que testar e devolver.
 
 ## Como retomar (leia isto primeiro)
 
-> **Estado em 2026-10-24 (use o #94, 356 MB):** junta tudo o que foi validado e o que
+> **Estado em 2026-10-24 (use o #100, 356 MB):** junta tudo o que foi validado e o que
 > é novo: X55 ativo com **`rotate-90`** (validado no aparelho), SSH `root/root`, Kodi
 > com `--socket=wayland-0` (2 h sem reiniciar), **áudio I2S**, **Wi-Fi/BT** (firmware +
 > `wpa_supplicant` + `bluez`) e o **painel web em `http://10.55.0.1:8088`** para
 > gerenciar rádio. Os #90/#91 falharam por drift das fontes externas — o CI agora fixa
 > U-Boot/ROCKNIX/rkbin por commit.
 
-1. Pegue o artifact `rk3566-x55-mainline-sdcard-image` do **run verde (success) mais
-   recente** em Actions. Ele traz: boot ativo da X55 (`display_transform=rotate-90`),
-   **SSH com senha liberado**, Kodi com `--socket=wayland-0`, áudio (I2S) habilitado e
-   os logs de diagnóstico. **Não** use runs com `failure`.
+1. Pegue o artifact `rk3566-x55-mainline-sdcard-image` do **run #100 (success)**
+   em Actions. Ele traz: boot ativo da X55 (`display_transform=rotate-90`),
+   **SSH com senha liberado**, Kodi com `--socket=wayland-0`, áudio (I2S) habilitado,
+   **Bluetooth funcionando** (config UART gerada no build), o **add-on Walkmam Radio**
+   dentro do Kodi e os logs de diagnóstico. **Não** use runs com `failure`.
 2. Grave no cartão, ligue o cabo USB e faça os testes da seção **"Testes a fazer"**.
 3. Confirme que o **SSH** entra: `ssh root@10.55.0.1` (senha `root`). Se entrar, dá
    para depurar ao vivo (dmesg, journalctl, `kodi.log`).
@@ -28,7 +29,9 @@ está pronto, o que ainda é **hipótese** e exatamente o que testar e devolver.
 
 | Run | Commit | Resultado | Observação |
 | --- | --- | --- | --- |
-| #98 | BT config gerado | **a rodar** | corrige o Bluetooth (config UART do 8821CS gerado no build) |
+| #100 | `38c9e05` (BT + add-on) | **success** | **use esta**: Bluetooth corrigido (config UART gerado) + add-on Walkmam Radio com o teclado da senha certo; 356 MB |
+| #99 | `5ec2ef9` (add-on) | success | add-on incluído, mas com o bug do teclado (só números) |
+| #98 | `f0902f0` (BT config) | success | corrige o Bluetooth; ainda sem o add-on |
 | #97 | `cbafb85` (docs stretch) | **success** | imagem testada: Wi-Fi ok no boot; BT ainda sem address |
 | #96 | `7e82e19` (DTS wifi/bt) | **success** | fixes de SDIO (0004) e `dma-names` uart1 (0021) + retry; base do #97 |
 | #94 | `0c9eb64` (Wi-Fi/BT + :8088) | **success** | artefato 356 MB: Wi-Fi/BT + painel web + rotate-90 |
