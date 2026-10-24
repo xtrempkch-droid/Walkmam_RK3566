@@ -24,6 +24,13 @@ para testar no aparelho.
 **Manual:** Actions → *Build Mainline RK3566 (Powkiddy X55) OS* → **Run workflow** →
 campo **variant** → `kodi` ou `retroarch`.
 
+**Por tag (só para `retroarch`):** uma tag que comece com `retroarch-` constrói a
+variante de jogos, o que também serve para marcar uma versão:
+
+```sh
+git tag retroarch-v1 && git push origin retroarch-v1
+```
+
 **Localmente** (empacotando artefatos já preparados):
 
 ```sh
