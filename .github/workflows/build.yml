@@ -175,12 +175,14 @@ jobs:
         echo "--> .dts antes de compilar (se ficasse habilitado, o Kodi em modo GBM poderia"
         echo "--> escolher esse conector 'fantasma' em vez do painel, deixando a tela preta)."
         if [ -f arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dts ]; then
-          printf '\n&hdmi {\n\tstatus = "disabled";\n};\n' >> arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dts
+          printf '\n&hdmi {\n\tstatus = "disabled";\n};\n&hdmi_sound {\n\tstatus = "disabled";\n};\n' >> arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dts
         fi
 
         echo "--> Desabilitando HDMI no X55 para testar o workaround de tela preta."
+        echo "--> O hdmi_sound vai junto: com o HDMI desligado ele nunca encontra o codec"
+        echo "--> e fica em 'deferred probe' para sempre (asoc-simple-card: parse error)."
         if [ -f arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x55.dts ]; then
-          printf '\n&hdmi {\n\tstatus = "disabled";\n};\n' >> arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x55.dts
+          printf '\n&hdmi {\n\tstatus = "disabled";\n};\n&hdmi_sound {\n\tstatus = "disabled";\n};\n' >> arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x55.dts
         fi
 
         echo "--> Checando modo da porta USB (precisa ser 'otg'/'peripheral', não fixo em 'host',"
@@ -333,6 +335,14 @@ jobs:
         ./scripts/config --enable INPUT_JOYSTICK
         ./scripts/config --enable INPUT_EVDEV
 
+        echo "--> Habilitando o I2S/TDM do Rockchip (CPU DAI do audio). O config da"
+        echo "--> ROCKNIX traz SND_SOC_ROCKCHIP_I2S=y, mas o 'olddefconfig' no kernel"
+        echo "--> mainline descarta o filho quando o pai nao esta setado; sem este driver"
+        echo "--> o 'sound' da X55 fica em deferred probe e nao existe placa de som."
+        ./scripts/config --enable SND_SOC_ROCKCHIP
+        ./scripts/config --enable SND_SOC_ROCKCHIP_I2S
+        ./scripts/config --enable SND_SOC_ROCKCHIP_I2S_TDM
+
         echo "--> Habilitando USB gadget ethernet (g_ether) pra SSH via cabo USB-C,"
         echo "--> já que a X35H não tem WiFi/Bluetooth:"
         ./scripts/config --enable USB_GADGET
@@ -343,6 +353,12 @@ jobs:
         ./scripts/config --enable USB_ROLE_SWITCH
 
         make olddefconfig
+        # Falha cedo se o kconfig descartar o I2S/áudio (foi o que aconteceu antes).
+        for sym in CONFIG_SND_SOC_ROCKCHIP CONFIG_SND_SOC_ROCKCHIP_I2S \
+                   CONFIG_SND_SOC_ROCKCHIP_I2S_TDM CONFIG_SND_SOC_RK817 \
+                   CONFIG_SND_SIMPLE_CARD; do
+          grep -qx "$sym=y" .config || { echo "!!! $sym nao ficou habilitado no .config" >&2; exit 1; }
+        done
         make -j"$(nproc)" Image modules
 
         if ! find arch/arm64/boot/dts/rockchip -iname '*powkiddy-x35s*' | grep -q .; then

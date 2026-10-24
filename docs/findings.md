@@ -136,9 +136,19 @@ hipótese como fato ao portar outra placa.
 
 ## Itens que apareceram nos logs e ainda não foram tratados
 
+- **Áudio (`asoc-simple-card: parse error`) — causa encontrada em 2026-10-23:** o
+  `sound`/`hdmi-sound` ficavam em *deferred probe* porque o **I2S do Rockchip**
+  (`CONFIG_SND_SOC_ROCKCHIP_I2S_TDM`, o CPU DAI `rk3568-i2s-tdm` do nó `i2s@fe410000`)
+  **não estava no kernel**. O config da ROCKNIX traz `SND_SOC_ROCKCHIP_I2S=y`, mas o
+  `make olddefconfig` do mainline descartava o filho (o pai `SND_SOC_ROCKCHIP` ficava
+  unset). Correção no workflow: habilitar explicitamente `SND_SOC_ROCKCHIP`,
+  `SND_SOC_ROCKCHIP_I2S` e `SND_SOC_ROCKCHIP_I2S_TDM`, falhar o build se sumirem, e
+  **desabilitar `&hdmi_sound`** junto com o HDMI (senão ele nunca encontra o codec).
+  Falta validar o áudio no aparelho depois do rebuild.
 - `va_openDriver() returns -1`: sem decodificação de vídeo por hardware via VA-API.
-  O módulo `hantro_vpu` carrega, então vale investigar outro caminho.
-- `asoc-simple-card: parse error` (probe adiado): o áudio ainda não funciona.
+  O módulo `hantro_vpu` carrega e registra `/dev/video0` (dec) e `/dev/video1` (enc);
+  falta o driver VA-API do Rockchip (`rockchip_drv_video.so`) no rootfs — investigar
+  uso direto de V4L2/DRM PRIME pelo Kodi.
 
 ## Como diagnosticar sem serial, rede ou solda
 
