@@ -848,16 +848,22 @@ jobs:
           # usava "$LIBRETRO_DIR", o grep não casava e o build abortava por causa
           # da própria checagem.
           LIBRETRO_DIR_CFG="$LIBRETRO_DIR/"
+          CFG_HOST="rootfs/root/.config/retroarch/retroarch.cfg"
+          # rootfs/root e modo 0700 (padrao do debootstrap). Sem sudo, o grep do
+          # runner nao consegue NEM ATRAVESSAR o diretorio e responde
+          # "Permission denied" — foi o que fez este build falhar com os pacotes
+          # e os cores ja corretos instalados.
           sed "s|@LIBRETRO_DIR@|$LIBRETRO_DIR_CFG|" \
             variants/retroarch/overlay/etc/walkmam/retroarch.cfg \
-            | sudo tee rootfs/root/.config/retroarch/retroarch.cfg >/dev/null
-          if ! grep -qF "libretro_directory = \"$LIBRETRO_DIR_CFG\"" rootfs/root/.config/retroarch/retroarch.cfg; then
+            | sudo tee "$CFG_HOST" >/dev/null
+          sudo chmod 0644 "$CFG_HOST"
+          if ! sudo grep -qF "libretro_directory = \"$LIBRETRO_DIR_CFG\"" "$CFG_HOST"; then
             echo "!!! libretro_directory nao foi substituido no retroarch.cfg" >&2
             echo "!!! esperado: libretro_directory = \"$LIBRETRO_DIR_CFG\"" >&2
-            grep -n 'libretro_directory' rootfs/root/.config/retroarch/retroarch.cfg >&2 || true
+            sudo grep -n 'libretro_directory' "$CFG_HOST" >&2 || true
             exit 1
           fi
-          if grep -qF '@LIBRETRO_DIR@' rootfs/root/.config/retroarch/retroarch.cfg; then
+          if sudo grep -qF '@LIBRETRO_DIR@' "$CFG_HOST"; then
             echo "!!! sobrou placeholder @LIBRETRO_DIR@ no retroarch.cfg" >&2
             exit 1
           fi

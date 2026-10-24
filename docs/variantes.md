@@ -127,6 +127,11 @@ Também disponíveis, mas não incluídos: `libretro-beetle-vb` (Virtual Boy),
 
    Foi assim que apareceram os quatro cores inexistentes acima — depois de um build
    falhar por eles.
+3. **`rootfs/root` é modo `0700`** (padrão do debootstrap). Escrever o
+   `/root/.config/retroarch/retroarch.cfg` exige `sudo` — e **ler também**: um `grep`
+   sem `sudo` no arquivo responde `Permission denied` porque não consegue nem
+   atravessar o diretório. Se você for verificar o conteúdo depois de escrever, use
+   `sudo grep`.
 
 ## A armadilha dos nomes de driver (RetroArch 1.14)
 
