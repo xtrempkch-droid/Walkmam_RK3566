@@ -735,6 +735,18 @@ jobs:
           rootfs/etc/systemd/system/walkmam-radio-retry.service
         sudo chroot rootfs systemctl enable walkmam-radio-retry.service
 
+        echo "--> Instalando o usb-watch (diagnostico do USB na X35S/X35H)..."
+        echo "--> Grava em /boot/usb-watch.log o que o kernel ve quando o cabo e"
+        echo "--> plugado. Sem isso, 'o PC nao mostra nada' nao diz se a porta e de"
+        echo "--> carga, se o cabo e de carga ou se os dados estao em outro PHY."
+        sudo install -D -m 0755 \
+          variants/kodi/overlay/usr/local/bin/usb-watch.sh \
+          rootfs/usr/local/bin/usb-watch.sh
+        sudo install -D -m 0644 \
+          variants/kodi/overlay/etc/systemd/system/walkmam-usb-watch.service \
+          rootfs/etc/systemd/system/walkmam-usb-watch.service
+        sudo chroot rootfs systemctl enable walkmam-usb-watch.service
+
         echo "--> Conferindo os binários que o painel usa (resolve o PATH real do rootfs)..."
         if ! sudo chroot rootfs sh -c '
               for b in busybox wpa_supplicant nmcli bluetoothctl rfkill iw; do
@@ -925,38 +937,25 @@ jobs:
         # Mesma imagem serve para X35S/X35H (mesmo DTB): no PC (partição FAT),
         # copie o conteúdo deste arquivo por cima de extlinux.conf e ajuste
         # display_transform=normal em walkmam.conf.
-        # X35S/X35H: usa a variante com USB "peripheral" quando ela existe, porque
-        # com o dr_mode "otg" herdado do SoC o aparelho nao ancorava
-        # ("dwc3 fcc00000.usb: failed to enable ep0out").
-        if [ -n "$PERIPH_FDT" ]; then
-          X35S_FDT_USAR="$PERIPH_FDT"
-        else
-          X35S_FDT_USAR="/${X35S_DEFAULT}"
-        fi
+        # X35S/X35H: o padrao continua sendo o dr_mode do SoC ("otg"), que e o que
+        # preserva o modo *host* (pendrive/teclado). Testado no X35H: o DTB com
+        # "peripheral" NAO resolveu ("PC nao ve nenhum dispositivo"), entao nao
+        # trocamos o padrao por uma hipotese — a variante fica como alternativa.
         cat << X35SBOOT > /mnt/boot/extlinux/extlinux.conf.x35s
         LABEL Walkmam (Powkiddy X35S / X35H)
             KERNEL /Image
-            FDT ${X35S_FDT_USAR}
-            APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw
-        X35SBOOT
-        echo "--> extlinux.conf.x35s aponta para: ${X35S_FDT_USAR}"
-
-        # Caminho de volta: mesmo DTB, mas com o dr_mode original do SoC ("otg").
-        # Use se a X35S/X35H precisar de um dispositivo USB *host* nessa porta.
-        cat << X35SOTG > /mnt/boot/extlinux/extlinux.conf.x35s-otg
-        LABEL Walkmam (Powkiddy X35S / X35H - USB otg, sem ancoragem)
-            KERNEL /Image
             FDT /${X35S_DEFAULT}
             APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw
-        X35SOTG
+        X35SBOOT
 
         if [ -n "$PERIPH_FDT" ]; then
-          cat << PERIPHBOOT > /mnt/boot/extlinux/extlinux.conf.x35s-dtb-oficial
-        LABEL Walkmam (X35H/X35S - USB peripheral, DTB oficial)
+          cat << PERIPHBOOT > /mnt/boot/extlinux/extlinux.conf.x35s-peripheral
+        LABEL Walkmam (X35H/X35S - USB peripheral, teste)
             KERNEL /Image
             FDT $PERIPH_FDT
             APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw
         PERIPHBOOT
+          echo "--> Alternativa de boot gravada: extlinux/extlinux.conf.x35s-peripheral"
         fi
 
         if [ -n "$X55_PERIPH_FDT" ]; then

@@ -1,0 +1,15 @@
+[Unit]
+Description=Walkmam: registra o que o kernel ve ao plugar o cabo USB
+After=usb-gadget.service multi-user.target
+# Nao depende do usb-gadget ter dado certo: o objetivo e justamente diagnosticar
+# quando ele falha.
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/usb-watch.sh
+# Roda 5 minutos e sai sozinho; nao reinicia.
+Restart=no
+TimeoutStartSec=420
+
+[Install]
+WantedBy=multi-user.target
