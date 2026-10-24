@@ -1024,6 +1024,39 @@ jobs:
         display_transform=auto
         WALKMAMCONF
 
+        # ROMs na partição FAT: é o ÚNICO lugar que se lê de um PC sem rede.
+        # Essencial na X35H, onde o USB não ancora. Limite prático ~90 MB (o
+        # resto vai para kernel/dtbs numa partição de 128 MB); para bibliotecas
+        # grandes o caminho é Wi-Fi + scp para /storage/roms.
+        if [ "${VARIANT:-kodi}" = "retroarch" ]; then
+          echo "--> Criando /roms na partição FAT (copie ROMs por lá, no PC)..."
+          mkdir -p /mnt/boot/roms
+          cat << "LEIAME" > /mnt/boot/roms/LEIA-ME.txt
+        ROMs: copie os arquivos aqui, nesta pasta "roms" da partição BOOT, e o
+        RetroArch os encontra no menu (Load Content -> /boot/roms).
+
+        Organize por sistema, por exemplo:
+          roms/nes/        Super Mario Bros.nes
+          roms/snes/       jogo.sfc
+          roms/gb/         jogo.gb
+          roms/gba/        jogo.gba
+          roms/pce/        jogo.pce
+          roms/psx/        jogo.cue + jogo.bin
+
+        Limite: esta partição tem 128 MB no total (o kernel ocupa boa parte).
+        Para bibliotecas maiores, conecte o Wi-Fi e use scp para /storage/roms,
+        que fica na partição grande (ext4).
+
+        PlayStation 1 precisa de BIOS em /storage/bios
+        (scph5500.bin, scph5501.bin ou scph5502.bin). A BIOS não vem com o
+        sistema; coloque a sua.
+
+        Saves e savestates ficam em /storage/saves e /storage/states (ext4),
+        não aqui.
+        LEIAME
+          echo "--> /roms criado com LEIA-ME.txt"
+        fi
+
         echo "--> Criando extlinux.conf ativo para a Powkiddy X55 (aparelho em teste)..."
         mkdir -p /mnt/boot/extlinux
         # Sem aspas no delimitador para expandir $VARIANT (senão o rótulo diria

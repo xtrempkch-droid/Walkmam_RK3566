@@ -64,15 +64,25 @@ no `retroarch.cfg`. Melhor quebrar no CI do que descobrir no aparelho.
 ## Onde ficam ROMs, saves e BIOS
 
 ```text
-/storage/roms/<sistema>/     ROMs (ext4, rootfs)
+/boot/roms/<sistema>/        ROMs (partição FAT — lê-se no PC, ~90 MB livres)
+/storage/roms/               ROMs também aqui, via Wi-Fi+scp (ext4, 4 GB)
 /storage/saves/              save RAM (.srm)
 /storage/states/             savestates
 /storage/screenshots/        capturas
-/storage/bios/               BIOS (necessária só para alguns cores)
+/storage/bios/               BIOS (PS1 exige)
 ```
 
-A partição FAT de boot é pequena e fica em `/boot`; serve para log e diagnóstico, não
-para ROMs.
+**Por que ROMs em `/boot/roms` (FAT):** é o único lugar que se abre de um PC **sem
+rede**. Isso importa muito na **X35H**, onde a porta USB não ancora (ver
+[hardware-e-drivers.md](hardware-e-drivers.md), F12) — sem isso não haveria como pôr um
+jogo no aparelho. O menu do RetroArch já abre nessa pasta.
+
+A imagem cria `/boot/roms/LEIA-ME.txt` com a organização por sistema e os limites.
+
+**Limite:** a partição FAT tem 128 MB no total (kernel + dtbs ocupam parte). Dá para
+alguns jogos de 8/16 bits, não para uma coleção de PS1. Para biblioteca grande: conecte
+o Wi-Fi e use `scp` para `/storage/roms`. Saves e savestates ficam no ext4
+(`/storage/...`), não na FAT — assim não se perdem ao copiar ROMs.
 
 ## Cores incluídos
 
