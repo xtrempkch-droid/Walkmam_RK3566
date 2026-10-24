@@ -49,7 +49,7 @@ tools/             utilitários auxiliares
 | X55: ancoragem USB + SSH (`root`/`root` em 10.55.0.1) | **confirmado** (PC precisa de IP estático 10.55.0.2/24) |
 | X35H: ancoragem USB | **aberto** (`failed to enable ep0out`) |
 | Sentido da rotação no X55 | **confirmado no aparelho: `rotate-90`** |
-| Wi-Fi/BT RTL8821CS | **firmware validado ao vivo** (`wlan0`, `hci0`); painel web na :8080 |
+| Wi-Fi/BT RTL8821CS | **firmware validado ao vivo** (`wlan0`, `hci0`); painel web na :8088 |
 | Áudio (`asoc-simple-card: parse error`) e vídeo VA-API | **aberto** |
 
 Detalhes e histórico completo: [`docs/status.md`](docs/status.md) e
@@ -179,7 +179,7 @@ caminho oficial; o rootfs Debian e a montagem da imagem exigem `sudo`.
   `unavailable`) e BlueZ. Validado ao vivo após copiar os firmwares: `wlan0` (fw
   24.11.0) e `hci0` sobem. A imagem agora baixa os firmwares (tag 20260309, sha256) e
   instala `wpasupplicant iw wireless-tools rfkill bluez busybox`, além do **painel web
-  na porta 8080** (`walkmam-webui.service`) para gerenciar Wi-Fi/BT.
+  na porta 8088** (`walkmam-webui.service`) para gerenciar Wi-Fi/BT.
 - **Drift de fontes externas (2026-10-24):** os runs #90/#91 falharam porque o master da
   ROCKNIX mudou (kernel 7.2, patch 0012 removido, 0016 usando `&gpio_keys_control`).
   Agora U-Boot/ROCKNIX/rkbin estão **fixados por commit** e há guarda para `.rej`.

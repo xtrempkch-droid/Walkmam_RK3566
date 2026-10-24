@@ -164,9 +164,25 @@ hipótese como fato ao portar outra placa.
   (firmware + config carregados). O scan de Wi-Fi só funciona depois de instalar o
   `wpa_supplicant`.
 - **Gerenciamento:** o Kodi não gerencia rádio. O projeto instala um **painel web**
-  (`walkmam-webui.service`, busybox httpd na porta **8080**) com scan/conexão de Wi-Fi
+  (`walkmam-webui.service`, busybox httpd na porta **8088**) com scan/conexão de Wi-Fi
   (`nmcli`) e scan/pareamento de Bluetooth (`bluetoothctl`). Acesse
-  `http://10.55.0.1:8080` pelo cabo ou no IP do Wi-Fi.
+  `http://10.55.0.1:8088` pelo cabo ou no IP do Wi-Fi.
+
+## Cosmético: leve esticamento horizontal (relato no aparelho, 2026-10-24)
+
+- Sintoma: com a interface na orientação correta (`rotate-90`), a imagem fica
+  **levemente esticada na horizontal**, "como em telas widescreen quando o sistema usa
+  uma resolução um pouco menor".
+- O `xdg_output` mostra **1280x720 lógicos** e o modo DRM é **720x1280@60**, ou seja, a
+  proporção do buffer bate com a do painel — não é um scale do Weston por resolução
+  errada.
+- **Hipóteses (não verificadas):** (a) timings do modo do painel (`hx8394`) com
+  porches/clock fora do ideal, gerando ajuste fino na controladora; (b) alguma opção
+  de proporção/overscan do Kodi (pixel ratio / "Ajustar exibição"); (c) o painel físico
+  não ter exatamente a proporção do modo declarado.
+- **Onde olhar primeiro:** `/sys/class/drm/card0-DSI-1/modes` (só 720x1280), o log do
+  Weston com `transform=rotate-90` e, no Kodi, `Settings → System → Display →
+  Pixel ratio`/overscan. Não alterar timing do painel sem fonte confirmada.
 
 ## Itens que apareceram nos logs e ainda não foram tratados
 

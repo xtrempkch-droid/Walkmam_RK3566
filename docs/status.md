@@ -105,7 +105,7 @@ aparelhos, trocando o `FDT` no `extlinux.conf`.
   em **10.55.0.1**. Ver "Segurança" no `docs/roadmap.md`.
 - **Painel web de Wi-Fi/Bluetooth:** `walkmam-webui.service` (busybox httpd) na porta
   **8080**, servindo `variants/kodi/overlay/usr/local/share/walkmam-webui/`. Acesse
-  `http://10.55.0.1:8080` pelo cabo (ou pelo IP do Wi-Fi) para procurar/conectar redes
+  `http://10.55.0.1:8088` pelo cabo (ou pelo IP do Wi-Fi) para procurar/conectar redes
   e parear dispositivos Bluetooth — o Kodi em si não gerencia rádio.
   Wi-Fi usa `nmcli`/`wpa_supplicant`; BT usa `bluetoothctl`/`bluez`.
 - **Firmware de rádio:** o CI baixa do `linux-firmware` (tag **20260309**, sha256
@@ -131,7 +131,7 @@ aparelhos, trocando o `FDT` no `extlinux.conf`.
 | Áudio (I2S habilitado no #92) | **a validar** no aparelho |
 | Wi-Fi RTL8821CS: driver + firmware + `wpa_supplicant` | **validado ao vivo** (`wlan0`, fw 24.11.0); conexão a testar |
 | Bluetooth RTL8821CS: `hci0` + firmware carregado | **validado ao vivo**; pareamento a testar |
-| Painel web de Wi-Fi/BT na porta 8080 | **implementado** (validar na próxima imagem) |
+| Painel web de Wi-Fi/BT na porta 8088 | **implementado** (validar na próxima imagem) |
 | Vídeo por hardware (`va_openDriver() returns -1`) | **aberto** |
 
 ## Testes a fazer (na ordem)
@@ -147,6 +147,17 @@ Causa raiz confirmada no aparelho: o **Weston 10.0.1 criava o socket como
 
 **Falta só a confirmação visual:** se a imagem estiver de cabeça para baixo, troque
 `display_transform` em `walkmam.conf` para `rotate-270` (já está `rotate-90`, validado).
+
+### 0.1 Wi-Fi e Bluetooth (imagem nova, 2026-10-24)
+
+1. Acesse **`http://10.55.0.1:8088`** pelo cabo USB (ou pelo IP do Wi-Fi, se já
+   conectado). O painel tem duas seções: **Wi-Fi** e **Bluetooth**.
+2. Wi-Fi: **Procurar redes** → escolher → senha → **Conectar**. Confirme com
+   `ip addr` (SSH) ou no próprio painel (mostra estado/IP).
+3. Bluetooth: **Ligar** → **Procurar dispositivos** → **Parear**. Ele pareia, confia
+   e conecta. Se o dispositivo pedir confirmação, aceite/repetir o pareamento.
+4. Se algo falhar, me mande: `dmesg | grep -iE 'rtw88|hci0|btrtl'`,
+   `nmcli dev wifi list`, `bluetoothctl show` e `journalctl -u walkmam-webui`.
 
 ### 1. USB gadget na X35H (prioridade)
 

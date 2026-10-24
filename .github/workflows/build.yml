@@ -659,9 +659,9 @@ jobs:
         echo "--> Criando serviço Kodi em Weston/Wayland sobre DRM no tty1..."
         sudo chroot rootfs systemctl enable kodi.service
 
-        echo "--> Instalando o painel web (Wi-Fi/Bluetooth) na porta 8080..."
+        echo "--> Instalando o painel web (Wi-Fi/Bluetooth) na porta 8088..."
         echo "--> O Kodi não gerencia rádio; o painel fica acessível em"
-        echo "--> http://10.55.0.1:8080 (cabo) ou no IP do Wi-Fi, sem sair do Kodi."
+        echo "--> http://10.55.0.1:8088 (cabo) ou no IP do Wi-Fi, sem sair do Kodi."
         sudo install -D -m 0644 \
           variants/kodi/overlay/usr/local/share/walkmam-webui/index.html \
           rootfs/usr/local/share/walkmam-webui/index.html
