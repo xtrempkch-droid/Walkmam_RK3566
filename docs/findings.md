@@ -98,6 +98,14 @@ hipótese como fato ao portar outra placa.
   `#include "rk3566-powkiddy-x55.dts"` e só sobrescreve `model`, `battery`,
   `joypad` e `panel`. Não há nó de USB próprio — então X35S e X55 compartilham a
   mesma configuração de USB.
+- **`getty@tty1` disputava o tty1 com o Kodi (corrigido em 2026-10-24):** o
+  `kodi.service` declara `Conflicts=getty@tty1.service` e usa `TTYPath=/dev/tty1`, mas a
+  imagem também habilitava autologin do getty no **mesmo** tty1. No boot os dois
+  disputam a unidade e um deles leva SIGTERM — no log isso aparece como
+  `Kodi (wayland) terminou com status 143` seguido de tentativa GBM
+  (`ERROR: Unable to create GUI. Exiting`, status 255) e reinício do serviço. Agora o
+  `getty@tty1` é **mascarado** (o tty1 é do Kodi) e o shell fica no console serial
+  `ttyS2`, que tem autologin do `root`.
 - **Como testar:** bootar com `dr_mode = "peripheral"` forçado no DTB ativo. A imagem
   oferece `extlinux.conf.x55-peripheral` (X55) e, para X35S/X35H, a entrada
   `extlinux.conf.x35s` já aponta para o DTB `peripheral` (e `x35s-otg` volta ao

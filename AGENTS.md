@@ -96,6 +96,18 @@ Se voltar a falhar: o motivo fica em **`/boot/kodi-start.log`** e na **tela (tty
     `extlinux.conf.x35s-peripheral` (teste).
 - O gadget não faz DHCP — se o PC ficar em 169.254.x.x, é isso.
 
+### 4.2.0 tty1 é do Kodi — não habilite getty ali
+
+`kodi.service` usa `TTYPath=/dev/tty1`, `StandardInput=tty` e
+`Conflicts=getty@tty1.service`. Se o `getty@tty1` também estiver habilitado (com ou sem
+autologin), os dois disputam a unidade no boot e **um dos dois recebe SIGTERM**: no
+`/boot/kodi-start.log` aparece `Kodi (wayland) terminou com status 143`, depois a
+tentativa GBM falha (`ERROR: Unable to create GUI`, 255) e o serviço entra em ciclo.
+
+A imagem agora **mascara** `getty@tty1.service` (`systemctl mask`). O shell de
+emergência fica no **console serial** (`ttyS2`, autologin do `root`). Não recrie o
+drop-in de autologin em tty1.
+
 ### 4.2.1 Áudio: mux tem que ficar em `HP` (não "conserte" isso)
 
 No X55 o amplificador do alto-falante (`spk_amp`) é alimentado por **`HPOL`/`HPOR`**, não

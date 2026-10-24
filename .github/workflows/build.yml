@@ -585,13 +585,14 @@ jobs:
         ExecStart=-/sbin/agetty --autologin root --keep-baud 1500000,115200,38400,9600 %I $TERM
         EOF'
 
-        echo "--> Habilitando login automático na tela (tty1)..."
-        sudo mkdir -p rootfs/etc/systemd/system/getty@tty1.service.d
-        sudo bash -c 'cat << "EOF" > rootfs/etc/systemd/system/getty@tty1.service.d/autologin.conf
-        [Service]
-        ExecStart=
-        ExecStart=-/sbin/agetty --autologin root --noclear %I $TERM
-        EOF'
+        echo "--> tty1 pertence ao Kodi: mascarando o getty@tty1."
+        echo "--> O kodi.service declara 'Conflicts=getty@tty1.service' e usa TTYPath=/dev/tty1."
+        echo "--> Com o getty também habilitado no tty1, os dois disputam a unidade no boot e um"
+        echo "--> dos dois leva SIGTERM: aparece 'Kodi (wayland) terminou com status 143' e o"
+        echo "--> serviço reinicia em ciclo. Mascarar o getty resolve a disputa e preserva as"
+        echo "--> mensagens que o launcher escreve em /dev/tty1 quando o Kodi não sobe."
+        echo "--> Shell continua disponível no console serial (ttyS2, autologin do root)."
+        sudo chroot rootfs systemctl mask getty@tty1.service
 
         echo "--> Instalando o script de diagnóstico (dmesg, USB, input) no cartão SD"
         echo "--> a cada boot — assim dá pra ler no PC sem precisar de serial/rede/solda."
