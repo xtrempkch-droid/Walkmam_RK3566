@@ -111,6 +111,11 @@ Run workflow (ou um push no `main`). Gera o artifact
 **Local (U-Boot + kernel + DTB, sem root):** possível, com toolchain extra. O CI é o
 caminho oficial; o rootfs Debian e a montagem da imagem exigem `sudo`.
 
+**Cuidado com `[skip ci]`:** o GitHub olha a mensagem do **commit de topo** do push.
+Se você commitar uma correção e, no mesmo push, o último commit for `docs: ... [skip
+ci]`, o workflow **não roda** — a correção fica sem imagem. Ou faça dois pushes, ou
+dispare um commit vazio (`git commit --allow-empty`) para gerar a imagem.
+
 ## 5.1 Acesso ao aparelho (para depurar)
 
 - Console **serial** (`ttyS2`, 1500000n8) e **tty1** com autologin do `root`.
