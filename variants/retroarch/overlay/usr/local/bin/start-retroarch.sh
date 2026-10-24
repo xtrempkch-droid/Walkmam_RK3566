@@ -14,7 +14,9 @@ RETROARCH_CFG=${RETROARCH_CFG:-/root/.config/retroarch/retroarch.cfg}
 RETROARCH_LOG=${RETROARCH_LOG:-/boot/retroarch-start.log}
 
 # Rotação e start do Weston vêm do helper compartilhado (fonte canônica).
-. /usr/local/share/walkmam/display.sh
+# A variável permite testar o launcher sem instalar nada no sistema.
+WALKMAM_DISPLAY_LIB=${WALKMAM_DISPLAY_LIB:-/usr/local/share/walkmam/display.sh}
+. "$WALKMAM_DISPLAY_LIB"
 
 TRANSFORM=$(walkmam_read_transform)
 
