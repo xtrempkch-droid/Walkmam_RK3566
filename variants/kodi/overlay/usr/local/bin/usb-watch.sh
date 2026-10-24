@@ -10,6 +10,8 @@
 # Saída: /boot/usb-watch.log (partição FAT, lê-se no PC).
 LOG=/boot/usb-watch.log
 [ -d /boot ] && [ -w /boot ] || LOG=/var/log/usb-watch.log
+# Log por boot: trunca para não crescer sem limite no cartão.
+: > "$LOG"
 exec >> "$LOG" 2>&1
 
 echo "===== $(date -Is) usb-watch iniciado ====="

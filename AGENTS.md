@@ -71,22 +71,29 @@ Sintoma: display ligava, terminal aparecia, mas o Kodi não abria (loop). Causas
 
 Se voltar a falhar: o motivo fica em **`/boot/kodi-start.log`** e na **tela (tty1)**.
 
-### 4.2 Ancoragem USB — X55 funciona; X35S/X35H usa DTB `peripheral`
+### 4.2 Ancoragem USB — X55 funciona; X35H **não ancora** (provável hardware)
 
-- No **X55** a rede USB sobe (`RNDIS`), o aparelho fica em **10.55.0.1** e o SSH
+- No **X55** a rede USB sobe (`g_ether`), o aparelho fica em **10.55.0.1** e o SSH
   (`root`/`root`) funciona. O PC **não** recebe IP por DHCP: configure **estático**
   `10.55.0.2/24` na interface USB.
-- No **X35S/X35H** o mesmo DTB **não** ancora: o kernel loga
-  `dwc3 fcc00000.usb: failed to enable ep0out`, que é o que o DWC3 dá quando o gadget
-  tenta habilitar o `ep0out` com o controlador em modo *host*. O papel vem do
-  `dr_mode = "otg"` do `rk356x.dtsi` e, nessas placas, a detecção não resolve para
-  *device*.
-  - **Correção:** o build gera `dtbs/<dtb>-peripheral.dtb` com
-    `dr_mode = "peripheral"` no nó `usb@fcc00000` e a entrada
-    **`extlinux.conf.x35s` já aponta para ela**. Para voltar ao original existe
-    `extlinux.conf.x35s-otg`.
-  - O gerador **verifica no DTB final** que o `dr_mode` ficou `peripheral`; se não
-    ficou, avisa e cai no DTB original (não gera variante silenciosamente quebrada).
+- No **X35S/X35H**, testado em 2026-10-24: **não funciona**, e **não é o papel OTG**.
+  Forçar `dr_mode = "peripheral"` no DTB não mudou nada (o PC não acusa nem
+  "dispositivo desconhecido"). O diagnóstico daquele boot mostra o UDC
+  `fcc00000.usb` presente porém `state = not attached` (sem VBUS/sessão no fio) e
+  `usb0` em `NO-CARRIER`. O DTB foi conferido: `dr_mode`, `phys`, `extcon` e o
+  `otg-port` estão corretos — é a mesma estrutura do DTB da X55.
+  - **Não repita** a tentativa de "resolver com peripheral": já foi testada e falhou.
+  - **Hipótese atual:** a porta USB-C do X35H não está no OTG (`usb@fcc00000`) e sim no
+    `usb@fd000000` (`dr_mode = "host"`). Se for isso, a porta é host-only: pendrive,
+    teclado e **adaptador USB-Ethernet funcionam**; gadget/SSH pelo cabo direto **não é
+    possível por software**.
+  - **Teste que decide:** com o console serial aberto, `dmesg -w` e plugar um pendrive;
+    depois `ls /sys/bus/usb/devices/`. Antes de concluir "sem dados", repetir com o
+    **mesmo cabo que funciona na X55**.
+  - A imagem traz `walkmam-usb-watch.service` → `/boot/usb-watch.log` com o retrato do
+    estado USB a cada mudança (UDC, `usb_role`, dispositivos, `online`, `dmesg`).
+  - Continuam disponíveis `extlinux.conf.x35s` (otg, padrão) e
+    `extlinux.conf.x35s-peripheral` (teste).
 - O gadget não faz DHCP — se o PC ficar em 169.254.x.x, é isso.
 
 ### 4.2.1 Áudio: mux tem que ficar em `HP` (não "conserte" isso)
@@ -315,3 +322,27 @@ dispare um commit vazio (`git commit --allow-empty`) para gerar a imagem.
   está ativo".
 - Pendente / próximo: gerar a imagem e o usuário testar o SSH por USB na X35H; se o
   `peripheral` não resolver, olhar o `diagnostico.txt` (campos `dr_mode` e `usb_role`).
+
+### 2026-10-24 (2) — Copilot (diagnóstico da X35H: USB descartado como software)
+
+- Recebi o `diagnostico.txt` da X35H (boot com
+  `rk3566-powkiddy-x35s-rocknix-peripheral.dtb`). Conclusões com evidência:
+  - `dr_mode` no device tree em uso = **`peripheral`** (confirmado no log);
+  - `/sys/class/udc/fcc00000.usb` **existe**, mas `state = not attached`;
+  - `usb0` sobe com `10.55.0.1/24` e fica `NO-CARRIER`;
+  - `failed to enable ep0out` continua.
+- Desmontei o `.dtb` que o aparelho realmente usou: `usb@fcc00000` com
+  `dr_mode="peripheral"`, `phys`/`phy-names`, `extcon`, `maximum-speed` e o
+  `usb2phy@fe8a0000`/`otg-port` todos `okay` — **estruturalmente igual ao da X55**, que
+  funciona. Portanto o DTB não é o culpado.
+- Conclusão honesta: **não é o papel OTG** (forçá-lo a device não mudou nada). A
+  hipótese que sobrou é hardware: a porta USB-C da X35H provavelmente está no
+  `usb@fd000000` (`dr_mode = "host"`), o que a torna **host-only** — nesse caso pendrive,
+  teclado e **dongle USB-Ethernet funcionam**, mas gadget/SSH direto é impossível.
+- Revertido o padrão `peripheral` (seria trocar o padrão por uma hipótese já testada e
+  falha) e mantida a variante como teste. Também reverte o `dr_mode` só na X35S/X35H.
+- Criado `walkmam-usb-watch.service` + `usb-watch.sh` (5 min no boot, log por boot em
+  `/boot/usb-watch.log`, retrato a cada mudança + `dmesg` do instante) para o teste do
+  pendrive produzir evidência.
+- Pendente / próximo: o usuário plugar um pendrive e devolver `usb-watch.log`. Isso
+  define se o SSH na X35H será por dongle USB-Ethernet ou se a porta não tem dados.

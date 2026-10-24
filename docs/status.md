@@ -146,8 +146,9 @@ aparelhos, trocando o `FDT` no `extlinux.conf`.
 | X55: Kodi inicia e mostra a interface | **RESOLVIDO** (Weston criava `wayland-1`; corrigido com `--socket=wayland-0`) |
 | X55: rotação da interface | **confirmado no aparelho: `rotate-90`** (landscape 1280x720) |
 | USB gadget (ancoragem) no X55: rede `usb0` no PC | **confirmado** (10.55.0.1 responde e a porta 22 abre, verificado do PC em 2026-10-09) |
+| USB na X35H | **não ancora** e não é o papel OTG (testado 2026-10-24). Hipótese: porta é host-only (`usb@fd000000`). Teste: pendrive + `ls /sys/bus/usb/devices/` |
 | Login do root por senha no SSH | **era bloqueado** (`prohibit-password`); corrigido no #89 e **validado** |
-| `dr_mode = "peripheral"` faz a ancoragem USB funcionar | **hipótese forte** na X35S/X35H (o erro `failed to enable ep0out` é de controlador em modo host); X55 funciona com `otg` |
+| `dr_mode = "peripheral"` faz a ancoragem USB funcionar | **DESCARTADO na X35S/X35H** (testado: PC não vê nada, UDC `not attached`); na X55 funciona com `otg` |
 | Sentido da rotação no X55 | **confirmado no aparelho: `rotate-90`** |
 | Contagem de botões/eixos na X35H | **medido: botões e direcionais OK** (2026-10-24) |
 | X35H: vídeo, áudio e botões | **CONFIRMADO no aparelho (2026-10-24)**: 640x480 a 58,5 Hz em tela cheia, áudio e direcionais OK |

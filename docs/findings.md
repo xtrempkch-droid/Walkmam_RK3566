@@ -110,6 +110,39 @@ hipótese como fato ao portar outra placa.
   host. Daí a correção ser fixar o papel em `peripheral` no DTB, e não mexer em módulo.
 - **Medido na X35H (2026-10-24):** vídeo (640x480 a 58,5 Hz, tela cheia), **áudio** e
   **botões/direcionais** funcionam. O USB é o único ponto em aberto.
+- **`peripheral` NÃO resolveu (teste do usuário, 2026-10-24):** com
+  `rk3566-powkiddy-x35s-rocknix-peripheral.dtb` (dr_mode confirmado `peripheral` no
+  device tree em uso) o PC continua **não vendo nada**, nem "dispositivo desconhecido".
+  Diagnóstico daquele boot:
+  - `/sys/class/udc/fcc00000.usb` **existe** (o controlador registrou o gadget) mas
+    `state = not attached` → o controlador não vê sessão/VBUS no fio;
+  - `usb0` sobe com `10.55.0.1/24` e fica `NO-CARRIER`;
+  - `failed to enable ep0out` continua no boot.
+  Ou seja: o problema **não é o papel OTG** (forçá-lo a device não mudou nada).
+- **O DTB não é o culpado:** desmontando o `.dtb` que a X35H realmente usou,
+  `usb@fcc00000` tem `dr_mode = "peripheral"`, `phys`/`phy-names` corretos, `extcon`,
+  `maximum-speed = "high-speed"`; `usb2phy@fe8a0000` e `otg-port` estão `okay`. É a
+  mesma configuração estrutural do DTB da X55, que funciona.
+- **Hipótese atual (não confirmada):** a porta USB-C do X35H **não está no controlador
+  OTG** (`usb@fcc00000`). O RK3566 tem dois: `usb@fcc00000` (OTG, é o que ancora na X55)
+  e `usb@fd000000` (`dr_mode = "host"`, usa `usb2phy0_host` + `combphy1` USB3), e **os
+  dois sobem** nesta imagem. Se a porta física da X35H estiver no segundo, ela é
+  **host-only**: ligar num PC nunca enumera nada (host contra host) e o gadget é
+  impossível por software.
+- **Teste que decide (2 minutos, precisa de pendrive):** com o aparelho ligado e o
+  console serial aberto (`ttyS2`, 1500000n8), rodar `dmesg -w` e plugar um **pendrive**
+  na porta USB-C (com adaptador OTG, se a porta for C). Depois `ls /sys/bus/usb/devices/`.
+  - Apareceu dispositivo → a porta é **host**: dá para usar pendrive, teclado e
+    **adaptador USB-Ethernet** (que resolve o SSH e o Wi-Fi do X35H); o gadget/SSH por
+    cabo direto **não é possível** nessa placa.
+  - Não apareceu nada e `cat /sys/class/udc/*/state` continuou `not attached` → a porta
+    não tem dados (só carga) ou o cabo é só-carga. **Repetir com o MESMO cabo que
+    funciona na X55** (controle) antes de concluir.
+- **Ferramenta nova na imagem:** `walkmam-usb-watch.service` roda
+  `usb-watch.sh` por 5 min no boot e grava `/boot/usb-watch.log` com um retrato do
+  estado USB (UDC, `usb_role`, dispositivos em `/sys/bus/usb/devices`, `online` das
+  fontes de energia) **no instante de cada mudança**, mais as últimas 40 linhas do
+  `dmesg` naquele momento. Assim, plugar o cabo produz evidência em vez de opinião.
 - Hipóteses ainda abertas: detecção de VBUS/ID, fornecimento do PHY, hub interno,
   cabo sem fios de dados, ou a porta ser host-only no hardware.
 

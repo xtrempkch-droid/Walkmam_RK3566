@@ -29,7 +29,7 @@ com trechos da **ROCKNIX** (fixada por commit) que ainda não estão upstream.
 | Bateria (design) | 4 000 000 µAh | 3 000 000 µAh | idem X35S |
 | Wi-Fi/BT (RTL8821CS) | **sim**, confirmado funcionando | **não medido** (o DTS herda os nós da X55; se a placa tiver o chip, funciona) | **não tem** (registrado no projeto) |
 | HDMI físico | não | não | não |
-| Validado em hardware | **sim** (2026-10): vídeo, áudio, botões, rádio | **não** | **sim, parcial** (2026-10-24): vídeo, áudio e botões OK; USB em correção |
+| Validado em hardware | **sim** (2026-10): vídeo, áudio, botões, rádio, USB | **não** | **sim, parcial** (2026-10-24): vídeo, áudio e botões OK; **USB não ancora** (provável hardware) |
 
 Os três são RK3566 (4 núcleos Cortex-A55). Na **X55** medido: `MemTotal` ≈ 2 029 084 kB
 (2 GB). A RAM da X35S/X35H não foi medida.
@@ -543,42 +543,54 @@ tipo em `type` e a flag de ocultar em **`option`**. `type=64` (que é a flag soz
 
 ---
 
-### F12 — USB: forçar `dr_mode = "peripheral"` na X35S/X35H · *DTS*
+### F12 — USB na X35S/X35H: **testado, não é o papel OTG** · *DTS / hardware*
 
-Sintoma: o PC **não vê nada** e o kernel loga
+Sintoma: o PC **não vê nada** (nem "dispositivo desconhecido") e o kernel loga
 
 ```text
 dwc3 fcc00000.usb: failed to enable ep0out
 ```
 
-Causa: o controlador DWC3 (`usb@fcc00000`) vem do SoC com `dr_mode = "otg"`, então o
-papel host/device depende da detecção do cabo. Na X55 isso resolve para *device* e o
-`g_ether` ancora. Na X35S/X35H **com o mesmo DTB** não resolve, e o gadget falha ao
-habilitar o `ep0out` — que é o comando de endpoint que o DWC3 só aceita em modo device.
+O que **já foi descartado** (medido em 2026-10-24 numa X35H real):
 
-```dts
-&usb_host0_xhci {
-	dr_mode = "peripheral";
-};
-```
+| Tentativa | Resultado |
+| --- | --- |
+| `dr_mode = "peripheral"` no DTB | **não mudou nada**; UDC existe mas `state = not attached` |
+| DTB da ROCKNIX e DTB compilado por nós | falham os dois |
+| Conferir o DTB em uso | `dr_mode`, `phys`, `phy-names`, `extcon`, `otg-port` todos corretos |
 
-Como aplicar sem recompilar: desmonte o DTB, troque o `dr_mode` do nó `usb@fcc00000` e
-recompile.
+`not attached` significa que o controlador **não detecta sessão/VBUS** no fio — não é
+questão de papel. E o `failed to enable ep0out` é o DWC3 não conseguindo completar um
+`DEPCMD` no endpoint 0, o que acontece quando o controlador/PHY não está operacional
+para aquele papel.
+
+**Hipótese atual:** a porta USB-C da X35H está no **outro** controlador. O RK3566 tem
+dois e ambos sobem nesta imagem:
+
+| Nó | Papel no DTS | PHYs | Serve para |
+| --- | --- | --- | --- |
+| `usb@fcc00000` | `otg` (vira device na X55) | `usb2phy0_otg` | gadget: rede USB, SSH |
+| `usb@fd000000` | `host` | `usb2phy0_host` + `combphy1` (USB3) | pendrive, teclado, dongle |
+
+Se a porta física da X35H estiver no segundo, ela é **host-only**: ligar num PC nunca
+enumera (host contra host) e o gadget é **impossível por software**.
+
+**Como decidir em 2 minutos** (console serial, `ttyS2` 1500000n8):
 
 ```sh
-dtc -I dtb -O dts -o x.dts /boot/dtbs/rk3566-powkiddy-x35s.dtb
-sed -i '/usb@fcc00000/,/};/ s/dr_mode = "otg";/dr_mode = "peripheral";/' x.dts
-dtc -I dts -O dtb -o /boot/dtbs/rk3566-powkiddy-x35s-peripheral.dtb x.dts
-# depois aponte o FDT do extlinux.conf para esse arquivo
+dmesg -w &                      # deixa rodando
+# plugue um pendrive na porta (adaptador OTG se for USB-C)
+ls /sys/bus/usb/devices/        # apareceu algo novo?
+cat /sys/class/udc/*/state      # continua "not attached"?
 ```
 
-**Trade-off:** com `peripheral` a porta deixa de funcionar como *host* (pendrive,
-teclado USB). Nesta família a porta é usada como device/charge, então o custo é baixo;
-mesmo assim a imagem mantém `extlinux.conf.x35s-otg` para voltar ao original.
+* Apareceu dispositivo → porta **host**. Use pendrive, teclado e — para rede —
+  um **adaptador USB-Ethernet** (isso resolve SSH na X35H).
+* Nada apareceu → repita com o **mesmo cabo que funciona na X55** (controle) antes de
+  concluir que a porta não tem dados.
 
-**Não confirmado ainda:** se essa é a causa no X35H (é a hipótese mais provável, pelo
-erro). A imagem nova já traz o DTB `peripheral` como padrão e o `diagnostico.txt` passa a
-registrar `dr_mode` do device tree em uso, então o próximo teste fecha a questão.
+O `dr_mode = "peripheral"` continua disponível como variante
+(`extlinux.conf.x35s-peripheral`), mas **não** é o padrão: já foi testado e falhou.
 
 ## 9. Código que você precisa carregar junto (não está no mainline)
 
@@ -609,7 +621,7 @@ nada.
 | `wlan0` existe mas `unavailable` | falta `wpa_supplicant` | instalar `wpasupplicant` |
 | `hci0` com MAC zero, "No default controller" | falta o `config` com entrada `0x0c` | **F5** |
 | `Invalid header checksum` no BT | `config` com entrada de 13 bytes | **F5** (16 bytes) |
-| `dwc3 ... failed to enable ep0out` (X35S/X35H) | `dr_mode="otg"` não resolve para device | **F12** |
+| `dwc3 ... failed to enable ep0out` (X35S/X35H) | UDC existe mas `not attached`; não é o papel OTG | **F12** (provável hardware) |
 | `ssh root@...` recusa a senha certa | `PermitRootLogin prohibit-password` | **F10** |
 | PC fica em `169.254.x.x` no cabo | gadget não faz DHCP | IP estático `10.55.0.2/24` |
 | Sem controle | nó `rocknix-joypad` aninhado | **F7** |
