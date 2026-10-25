@@ -277,6 +277,60 @@ hipótese como fato ao portar outra placa.
   (`Kill.exe (100%) WPA2`). Zero tracebacks no `kodi.log`. Este é o caminho para
   testar o add-on por SSH sem tocar na TV.
 
+## X35H: o USB falha no controlador, não no cabo (2026-10-25)
+
+O log do boot da variante retroarch no X35H trouxe a primeira evidência de **nível de
+controlador** — e ela encerra a linha de investigação "papel OTG / cabo / VBUS":
+
+```
+[    4.073446] dwc3 fcc00000.usb: failed to enable ep0out
+```
+
+Comparação dos dois aparelhos, mesmo kernel e mesmo DTB (o X35H usa o DTB oficial da
+X35S do release ROCKNIX 20261001):
+
+| | X55 (funciona) | X35H (não funciona) |
+| --- | --- | --- |
+| `failed to enable ep0out` | **ausente** | **presente** |
+| `/sys/class/udc/fcc00000.usb/state` | `configured` | `not attached` |
+| `rk817-charger/online` | `1` | `0` |
+| `usb0` | sobe, 10.55.0.1 | `NO-CARRIER` |
+
+`failed to enable ep0out` vem de `__dwc3_gadget_ep_enable()` (`drivers/usb/dwc3/
+gadget.c`, chamado por `dwc3_gadget_start()`): o `ep0out` não aceita a configuração,
+a inicialização do gadget aborta e o UDC nunca é levado a `configured`. Isso acontece
+**antes** de qualquer negociação com o host, então nenhum ajuste de papel, cabo ou
+`dr_mode` pode resolver.
+
+Descartei a hipótese de DTB de forma definitiva: extraí `rk3566-powkiddy-x55.dtb` e
+`rk3566-powkiddy-x35s.dtb` do release ROCKNIX e comparei os nós `usb@fcc00000`,
+`usb@fd000000` e `usb2phy@fe8a0000` — são idênticos (mesmo `dr_mode = otg`, mesmo
+`extcon`, mesmo `otg-port` com `status = okay`). O único diff relevante entre os dois
+DTBs é o **rótulo** dos botões A/B e X/Y.
+
+Leitura possível: a porta USB-C do X35H pode não estar fisicamente ligada a esse
+controlador (o PMIC também não vê VBUS: `online = 0`). Teste que decide: plugar um
+pendrive e ver se aparece algo em `/sys/bus/usb/devices/` — se aparecer, a porta é
+**host** e um adaptador USB-Ethernet resolve rede/SSH; se nada aparecer em papel
+nenhum, a porta é só de carga.
+
+### X35H: o SDIO do Wi-Fi não inicializa (mmc3)
+
+Mesmo boot, outro problema independente:
+
+```
+[    1.716222] mmc_host mmc3: card is non-removable.
+[    2.194544] mmc3: Failed to initialize a non-removable card
+```
+
+`mmc3` (`mmc@fe2c0000`) é o SDIO do rádio (`cap-sdio-irq`, `mmc-pwrseq`,
+`non-removable` no DTB) e o cartão não responde — por isso `wlan0` não existe e o
+`radio-retry` tenta `rtw88_8821cs` três vezes sem sucesso (`hci0` também fica sem
+endereço). Os nós de mmc são idênticos aos da X55, então é sequência de energia do
+módulo no X35H, não configuração. **Consequência prática: o X35H está sem Wi-Fi e sem
+Bluetooth nesta imagem**, e não há como resolver por ajuste de software sem medir o
+`pwrseq`/regulador no aparelho.
+
 ## Variante retroarch: dois bugs de sessão gráfica (2026-10-24, no aparelho)
 
 Os dois só aparecem quando o RetroArch roda de verdade; nenhum é visível no build.

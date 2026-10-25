@@ -352,7 +352,23 @@ da X35S (`rk3566-powkiddy-x35s*`), e o modelo reportado no device tree é
   e a inversão de eixos que o DTS da X35S aplica.
 * **Rotação** — `normal` (painel 640x480).
 
-**Em aberto:** a **ancoragem USB** (rede `usb0`/SSH). Ver F12.
+* **Variante de jogos** (2026-10-25) — RetroArch em 640x480 via Wayland, sessão de
+  81 s sem erro; os 17 botões e os 4 eixos do joypad são os mesmos da X55 (mesmo
+  bitmap `key`/`abs`), então o perfil de autoconfig vale para os dois.
+
+**Em aberto e medido (2026-10-25):**
+
+* **USB não ancora — e a falha é do controlador, não do cabo.** O `dmesg` do X35H tem
+  `dwc3 fcc00000.usb: failed to enable ep0out`, que **não existe** na X55. É
+  `__dwc3_gadget_ep_enable()` abortando dentro de `dwc3_gadget_start()`: o gadget não
+  inicializa, o UDC nunca vai a `configured` (fica `not attached`) e `usb0` fica em
+  `NO-CARRIER`. O `rk817-charger/online` é `0` no X35H e `1` na X55. Os nós USB/PHY
+  são **idênticos** ao DTB oficial da X55 (comparei os DTBs do release ROCKNIX
+  20261001), então não é device tree. Ver F12.
+* **Sem Wi-Fi e sem Bluetooth:** `mmc3: Failed to initialize a non-removable card` — o
+  SDIO do rádio (`mmc@fe2c0000`, `non-removable` + `mmc-pwrseq`) não responde, então
+  `wlan0` não existe e `hci0` fica sem endereço. Os nós de mmc também são idênticos aos
+  da X55: é sequência de energia do módulo neste aparelho.
 
 ### 5.2 Por que os 75 Hz "não aplicam" (não é limitação do hardware)
 
@@ -600,6 +616,8 @@ O que **já foi descartado** (medido em 2026-10-24 numa X35H real):
 | `dr_mode = "peripheral"` no DTB | **não mudou nada**; UDC existe mas `state = not attached` |
 | DTB da ROCKNIX e DTB compilado por nós | falham os dois |
 | Conferir o DTB em uso | `dr_mode`, `phys`, `phy-names`, `extcon`, `otg-port` todos corretos |
+| Comparar os DTBs **oficiais** das duas máquinas (release ROCKNIX 20261001) | nós `usb@fcc00000`, `usb@fd000000` e `usb2phy@fe8a0000` **idênticos**; só mudam os rótulos dos botões |
+| `rk817-charger/online` | **0** no X35H contra **1** na X55 com o mesmo cabo |
 
 `not attached` significa que o controlador **não detecta sessão/VBUS** no fio — não é
 questão de papel. E o `failed to enable ep0out` é o DWC3 não conseguindo completar um
@@ -616,6 +634,11 @@ dois e ambos sobem nesta imagem:
 
 Se a porta física da X35H estiver no segundo, ela é **host-only**: ligar num PC nunca
 enumera (host contra host) e o gadget é **impossível por software**.
+
+O ponto importante do log: a linha `failed to enable ep0out` sai de
+`__dwc3_gadget_ep_enable()` dentro de `dwc3_gadget_start()` — isto é, o gadget aborta
+**antes** de haver negociação com o host. Nenhum ajuste de papel, cabo ou `dr_mode`
+pode contornar isso.
 
 **Como decidir em 2 minutos** (console serial, `ttyS2` 1500000n8):
 
@@ -663,7 +686,8 @@ nada.
 | `wlan0` existe mas `unavailable` | falta `wpa_supplicant` | instalar `wpasupplicant` |
 | `hci0` com MAC zero, "No default controller" | falta o `config` com entrada `0x0c` | **F5** |
 | `Invalid header checksum` no BT | `config` com entrada de 13 bytes | **F5** (16 bytes) |
-| `dwc3 ... failed to enable ep0out` (X35S/X35H) | UDC existe mas `not attached`; não é o papel OTG | **F12** (provável hardware) |
+| `dwc3 ... failed to enable ep0out` (X35S/X35H) | gadget aborta no controlador; UDC fica `not attached`; não é o papel OTG | **F12** (provável hardware) |
+| `mmc3: Failed to initialize a non-removable card` (X35H) | SDIO do rádio não responde: sem Wi-Fi e sem BT | medir `pwrseq`/regulador no aparelho |
 | `ssh root@...` recusa a senha certa | `PermitRootLogin prohibit-password` | **F10** |
 | PC fica em `169.254.x.x` no cabo | gadget não faz DHCP | IP estático `10.55.0.2/24` |
 | Sem controle | nó `rocknix-joypad` aninhado | **F7** |

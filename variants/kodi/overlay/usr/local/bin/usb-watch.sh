@@ -18,6 +18,17 @@ echo "===== $(date -Is) usb-watch iniciado ====="
 echo "modelo: $(tr -d '\000' < /proc/device-tree/model 2>/dev/null)"
 echo "dr_mode ativo: $(cat /proc/device-tree/usb@fcc00000/dr_mode 2>/dev/null || echo '?')"
 
+# dmesg filtrado: e aqui que aparece "failed to enable ep0out" (X35H), que diz que
+# o gadget falhou no CONTROLADOR — antes de qualquer coisa de cabo/papel OTG.
+# Precisa rodar tambem na foto inicial: no X35H o estado nunca muda, e um dmesg so
+# "na mudanca" nunca era gravado.
+dmesg_usb() {
+    echo "--- dmesg USB neste instante ---"
+    dmesg 2>/dev/null | grep -iE "dwc3|ep0|xhci|usb[0-9]+ |g_ether|dwc3.*phy|usb2phy|vbus|extcon" \
+        | tail -n 25
+    echo "--- fim do dmesg ---"
+}
+
 retrato() {
     echo "--- $(date -Is) ---"
     echo -n "udc: "
@@ -56,6 +67,7 @@ impressao() {
 
 anterior=$(impressao)
 retrato
+dmesg_usb
 
 # 5 minutos é suficiente para plugar/desplugar; depois o serviço encerra para
 # não escrever no cartão para sempre.
@@ -70,6 +82,7 @@ while [ "$i" -lt 150 ]; do
         echo "--- ultimas linhas do dmesg neste instante ---"
         dmesg | tail -n 40
         echo "--- fim ---"
+        dmesg_usb
         anterior=$atual
     fi
 done

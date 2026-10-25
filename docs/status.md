@@ -12,7 +12,7 @@ está pronto, o que ainda é **hipótese** e exatamente o que testar e devolver.
 | Variante | Build | Artefato | Tamanho | Estado |
 | --- | --- | --- | --- | --- |
 | `kodi` (multimídia) | **#115** | `rk3566-x55-mainline-sdcard-image` | 356 MB | **validada em hardware** (X55 e X35H) |
-| `retroarch` (jogos) | **#116** (tag `retroarch-v0.6`) | `rk3566-x55-retroarch-sdcard-image` | 536 MB | **validada no X55** (tela/rotação/áudio/controles); ver correções abaixo |
+| `retroarch` (jogos) | **#116** (tag `retroarch-v0.6`) | `rk3566-x55-retroarch-sdcard-image` | 536 MB | **validada no X55 e no X35H** (tela/rotação/áudio/controles); correções pendentes de imagem nova |
 
 Pegue em **Actions → run #115 / #116 → Artifacts**. Grave em cartões separados (são
 duas imagens completas, não dá para trocar de variante pelo cartão).
@@ -30,6 +30,7 @@ corrigidos e **confirmados no aparelho**:
 | Áudio | OK — `/dev/snd/pcmC0D0p` aberto pelo RetroArch, mux em `HP` |
 | Botões, D-pad, L/R/L2/R2, L3/R3, F | **OK** (teste do usuário) |
 | Analógicos (os dois) | **OK** (teste do usuário) |
+| X35H (mesmo cartão): 640x480, `normal` | **OK** — sessão de 81 s (antes morria em 7,5 s) |
 | Jogo de verdade (carregar ROM) | **não testado** — próximo passo |
 
 As duas correções estão no repositório e **ainda não estão em nenhuma imagem**:
@@ -49,13 +50,29 @@ por `scp` e o serviço reiniciado.
    a lista de cores instalados.
 3. Console serial (`ttyS2`, autologin root) — o `tty1` pertence ao app.
 
-### Pendência aberta no X35H: USB
+### Pendências do X35H: USB e rádio (sem Wi-Fi e sem BT)
 
-A porta **não ancora** e já se sabe que **não é o papel OTG** (testado: `peripheral`
-não mudou nada; o UDC existe com `state = not attached`). Falta o teste do pendrive:
-ligar, rodar `dmesg -w` e ver `ls /sys/bus/usb/devices/`. A imagem grava tudo em
-`/boot/usb-watch.log`. Hipótese atual: a porta é **host-only** (`usb@fd000000`) —
-nesse caso um adaptador USB-Ethernet resolve rede/SSH na X35H e o gadget é impossível.
+**USB:** a falha é do **controlador**, não do cabo nem do papel. O `dmesg` do X35H tem,
+e o da X55 não tem:
+
+```
+dwc3 fcc00000.usb: failed to enable ep0out
+```
+
+Isso é `__dwc3_gadget_ep_enable()` abortando dentro de `dwc3_gadget_start()`: o gadget
+não inicializa, o UDC nunca vai a `configured` (fica `not attached`) e `usb0` fica
+`NO-CARRIER`. Descartei device tree de vez — comparei os DTBs **oficiais** dos dois
+aparelhos (release ROCKNIX 20261001) e os nós USB/PHY são idênticos. O
+`rk817-charger/online` é `0` no X35H contra `1` na X55.
+
+**Teste que decide:** plugar um pendrive e ver `ls /sys/bus/usb/devices/`. Se aparecer,
+a porta é **host** (adaptador USB-Ethernet resolve rede/SSH). Se nada aparecer em papel
+nenhum, é porta só de carga. Use o mesmo cabo que funciona na X55 como controle.
+
+**Rádio:** `mmc3: Failed to initialize a non-removable card` — o SDIO do rádio não
+responde, então `wlan0` não existe e `hci0` fica sem endereço (`radio-retry` tenta
+`rtw88_8821cs` três vezes e desiste). Também é independente de software: os nós de mmc
+são idênticos aos da X55.
 
 ### Armadilhas que custaram build (não repita)
 

@@ -116,17 +116,30 @@ Se voltar a falhar: o motivo fica em **`/boot/kodi-start.log`** e na **tela (tty
 - No **X55** a rede USB sobe (`g_ether`), o aparelho fica em **10.55.0.1** e o SSH
   (`root`/`root`) funciona. O PC **não** recebe IP por DHCP: configure **estático**
   `10.55.0.2/24` na interface USB.
-- No **X35S/X35H**, testado em 2026-10-24: **não funciona**, e **não é o papel OTG**.
-  Forçar `dr_mode = "peripheral"` no DTB não mudou nada (o PC não acusa nem
-  "dispositivo desconhecido"). O diagnóstico daquele boot mostra o UDC
-  `fcc00000.usb` presente porém `state = not attached` (sem VBUS/sessão no fio) e
-  `usb0` em `NO-CARRIER`. O DTB foi conferido: `dr_mode`, `phys`, `extcon` e o
-  `otg-port` estão corretos — é a mesma estrutura do DTB da X55.
-  - **Não repita** a tentativa de "resolver com peripheral": já foi testada e falhou.
-  - **Hipótese atual:** a porta USB-C do X35H não está no OTG (`usb@fcc00000`) e sim no
-    `usb@fd000000` (`dr_mode = "host"`). Se for isso, a porta é host-only: pendrive,
-    teclado e **adaptador USB-Ethernet funcionam**; gadget/SSH pelo cabo direto **não é
-    possível por software**.
+- No **X35S/X35H**: **não funciona**, e a causa **não é o papel OTG**. Forçar
+  `dr_mode = "peripheral"` não mudou nada. O que decide está no `dmesg`, e só o X35H
+  tem esta linha:
+
+  ```
+  dwc3 fcc00000.usb: failed to enable ep0out
+  ```
+
+  Ou seja: o **gadget falha no CONTROLADOR** (`__dwc3_gadget_ep_enable` do `ep0out`,
+  no Linux 6.12: `drivers/usb/dwc3/gadget.c`), antes de existir qualquer questão de
+  cabo, VBUS ou papel. Consequência: o UDC nunca chega a `configured` (fica
+  `not attached`) e `usb0` fica `NO-CARRIER`. O `rk817-charger/online` também é **0**
+  no X35H contra **1** no X55, o que sugere que a porta pode nem estar ligada a esse
+  controlador.
+  - **Não repita:** "resolver com peripheral" (testado, falhou) e "conferir o DTB"
+    (conferido: nós USB e PHY **byte a byte idênticos** ao DTB oficial da X55 —
+    comparei os dois DTBs do release ROCKNIX 20261001).
+  - **Teste que decide:** plugar um pendrive e ver se aparece algo em
+    `/sys/bus/usb/devices/`. Se aparecer, a porta é **host** e um adaptador
+    USB-Ethernet resolve rede/SSH; se não aparecer nada em nenhum dos dois papéis, a
+    porta é só de carga. Use o **mesmo cabo que funciona na X55** como controle.
+  - `usb-watch.log` agora grava o `dmesg` de USB **sempre na foto inicial** (antes só
+    gravava "na mudança", e no X35H nunca há mudança — foi por isso que o `ep0out`
+    demorou a aparecer).
   - **Teste que decide:** com o console serial aberto, `dmesg -w` e plugar um pendrive;
     depois `ls /sys/bus/usb/devices/`. Antes de concluir "sem dados", repetir com o
     **mesmo cabo que funciona na X55**.
