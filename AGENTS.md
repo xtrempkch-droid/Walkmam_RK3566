@@ -32,10 +32,10 @@ Resumo:
    `http://deb.debian.org/debian/dists/bookworm/main/binary-arm64/Packages.gz`.
 2. Ler ou escrever em `rootfs/root/...` sem `sudo`: o diretório é **0700** e o erro é
    `Permission denied` (foi o que derrubou o build #112 com tudo mais correto).
-3. `[skip ci]`: cancela o build do **intervalo inteiro** do push, não só do commit de
-   topo. Um commit com a marca no meio de dois pushes silencia também o push seguinte
-   (custou uma tag que não gerou build). Se precisar silenciar um commit, faça o push
-   dele **sozinho** e o próximo push separado.
+3. A marca de skip do CI é lida no **corpo** da mensagem, não só no título — e
+   **escrever a marca para documentá-la também cancela o build**. Custa uma tag
+   silenciosa a cada vez (aconteceu 3x nesta sessão). Para documentar, escreva
+   "skip-ci" sem os colchetes, ou mande o commit de documentação separado.
 4. `:` dentro de `name:` de um step no YAML — quebra o parse do workflow.
 5. Em Wayland girado, deixar `video_fullscreen_x/y = "0"` no RetroArch: ele pede a
    superfície no modo **nativo** (720x1280) e o Weston mata o cliente
@@ -215,8 +215,8 @@ Run workflow (ou um push no `main`). Gera o artifact
 **Local (U-Boot + kernel + DTB, sem root):** possível, com toolchain extra. O CI é o
 caminho oficial; o rootfs Debian e a montagem da imagem exigem `sudo`.
 
-**Cuidado com `[skip ci]` (custou dois ciclos):** o GitHub olha a mensagem do
-**commit que o ref aponta**.
+**Cuidado com `[skip ci]` (custou cinco builds nesta sessão):** o GitHub olha a
+mensagem do **commit que o ref aponta** — e **corpo também conta**, não só o título.
 
 1. Push na branch: vale o commit de topo. Se você commitar uma correção e o último
    commit do push for `docs: ... [skip ci]`, o workflow **não roda** e a correção fica
@@ -224,10 +224,15 @@ caminho oficial; o rootfs Debian e a montagem da imagem exigem `sudo`.
 2. **Push de tag:** vale a mensagem do commit **apontado pela tag**. Uma tag criada em
    cima de um commit com `[skip ci]` também não roda — inclusive a tag
    `retroarch-*`, que é justamente o gatilho da variante de jogos.
+3. **Documentar a armadilha também dispara a armadilha.** Um commit cujo texto
+   explique `[skip ci]` contém a marca e por isso é ignorado — foi assim que a tag
+   `retroarch-v0.7` e depois a `v0.8` não geraram build. Escreva "skip-ci" sem os
+   colchetes ao documentar.
 
-Saídas: dois pushes separados; `git commit --allow-empty` sem `[skip ci]` para gerar a
+Saídas: dois pushes separados; `git commit --allow-empty` sem a marca para gerar a
 imagem; ou marcar a tag num commit limpo. Um `git push --delete` da tag e recriar em
-outro commit resolve sem force-push na branch.
+outro commit resolve sem force-push na branch. Para conferir se o build nasceu, olhe
+`/actions/runs?branch=<tag>`: se voltar vazio, o push foi engolido pela marca.
 
 ## 5.1 Acesso ao aparelho (para depurar)
 
