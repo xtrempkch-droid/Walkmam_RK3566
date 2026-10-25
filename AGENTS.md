@@ -32,7 +32,10 @@ Resumo:
    `http://deb.debian.org/debian/dists/bookworm/main/binary-arm64/Packages.gz`.
 2. Ler ou escrever em `rootfs/root/...` sem `sudo`: o diretório é **0700** e o erro é
    `Permission denied` (foi o que derrubou o build #112 com tudo mais correto).
-3. `[skip ci]` no commit de topo: também impede o build da **tag** que aponta para ele.
+3. `[skip ci]`: cancela o build do **intervalo inteiro** do push, não só do commit de
+   topo. Um commit com a marca no meio de dois pushes silencia também o push seguinte
+   (custou uma tag que não gerou build). Se precisar silenciar um commit, faça o push
+   dele **sozinho** e o próximo push separado.
 4. `:` dentro de `name:` de um step no YAML — quebra o parse do workflow.
 5. Em Wayland girado, deixar `video_fullscreen_x/y = "0"` no RetroArch: ele pede a
    superfície no modo **nativo** (720x1280) e o Weston mata o cliente
