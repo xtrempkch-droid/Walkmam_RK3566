@@ -132,6 +132,48 @@ Mapa dos botões (GPIO do RK3566, todos ativos em nível baixo):
    O repositório traz `build/rocknix-input-polldev-compat.h`, instalado como
    `include/linux/input-polldev.h`, um adaptador fino para a API de polling atual.
 
+#### 3.2.1 O que cada app precisa para enxergar esses 17 botões
+
+O kernel entrega códigos evdev; cada aplicação precisa do **seu próprio mapa**. Os
+dois mapas são arquivos diferentes, com convenções diferentes — e os dois já foram
+fonte de "controle morto" neste projeto:
+
+| App | Arquivo | Convenção |
+| --- | --- | --- |
+| Kodi | `.../addons/peripheral.joystick/resources/buttonmaps/xml/linux/retrogame_joypad_17b_4a.xml` | nomes de eixo/botão do SDL |
+| RetroArch | `/root/.config/retroarch/autoconfig/udev/Rocknix_Gamepad.cfg` | **índice** na enumeração do driver udev |
+
+**A armadilha do RetroArch:** os números do autoconfig **não são códigos evdev**. O
+driver (`input/drivers_joypad/udev_joypad.c`) monta primeiro um bitmap de keycodes e
+depois numera os botões presentes, varrendo nesta ordem: `KEY_UP..KEY_DOWN`,
+`BTN_MISC..KEY_MAX`, `0..KEY_UP`, `KEY_DOWN+1..BTN_MISC`. Para os 17 botões da X55 o
+resultado é:
+
+| Índice | Código | Papel | Índice | Código | Papel |
+| --- | --- | --- | --- | --- | --- |
+| 0 | `BTN_A` (SOUTH) | B físico (baixo) | 9 | `BTN_START` | Start |
+| 1 | `BTN_B` (EAST) | A físico (direita) | 10 | `BTN_MODE` | F |
+| 2 | `BTN_X` (NORTH) | X físico (cima) | 11 | `BTN_THUMBL` | L3 |
+| 3 | `BTN_Y` (WEST) | Y físico (esquerda) | 12 | `BTN_THUMBR` | R3 |
+| 4 | `BTN_TL` | L | 13 | `BTN_DPAD_UP` | Cima |
+| 5 | `BTN_TR` | R | 14 | `BTN_DPAD_DOWN` | Baixo |
+| 6 | `BTN_TL2` | L2 | 15 | `BTN_DPAD_LEFT` | Esquerda |
+| 7 | `BTN_TR2` | R2 | 16 | `BTN_DPAD_RIGHT` | Direita |
+| 8 | `BTN_SELECT` | Select | | | |
+
+Eixos: `ABS_X/Y/RX/RY` (0x1b) → índices `0,1,2,3` (esquerdo X/Y, direito X/Y). Se
+algum botão for removido/acrescentado no DTS, **todos os índices acima dele mudam**.
+
+Como recalcular sem adivinhar (não precisa de python no aparelho):
+
+```sh
+cat /sys/class/input/event*/device/capabilities/key   # bitmap, word alto primeiro
+```
+
+Decodifique os bits (`word_index*64 + bit`), filtre os códigos presentes e reordene
+na sequência da varredura acima. O perfil do RetroArch é instalado pelo workflow a
+partir de `variants/retroarch/overlay/root/.config/retroarch/autoconfig/udev/`.
+
 ### 3.3 Áudio
 
 | Item | Valor |

@@ -277,6 +277,61 @@ hipótese como fato ao portar outra placa.
   (`Kill.exe (100%) WPA2`). Zero tracebacks no `kodi.log`. Este é o caminho para
   testar o add-on por SSH sem tocar na TV.
 
+## Variante retroarch: dois bugs de sessão gráfica (2026-10-24, no aparelho)
+
+Os dois só aparecem quando o RetroArch roda de verdade; nenhum é visível no build.
+
+### 1. Wayland derruba o cliente por causa do tamanho da superfície
+
+Sintoma: serviço sobe, `retroarch` morre em ~7 s **com status 0**, tela preta, e o
+launcher considera sucesso (nada é escrito no tty1).
+
+```
+=== /boot/retroarch-start.log ===
+start-retroarch (transform=rotate-90)
+Weston pronto; iniciando RetroArch (video_driver=wayland)
+xdg_wm_base@11: error 4: xdg_surface geometry (720 x 1280) is larger than the
+configured fullscreen state (1280 x 720)
+RetroArch (wayland) terminou com status 0
+```
+
+Causa: o Weston gira a **saída** (`transform=rotate-90` → 1280x720), mas o RetroArch
+dimensiona a **própria superfície** com `video_fullscreen_x/y`; com esses valores em
+`"0"` (padrão) ele usa o modo **nativo** do painel (`720x1280`) e pede uma superfície
+maior que o fullscreen configured → violação de protocolo → Weston mata o cliente.
+
+Correção (confirmada no aparelho): calcular o tamanho da saída já girada a partir do
+modo do DRM + `display_transform` e passar por `--appendconfig`
+(`video_fullscreen_x/y`). Medido: com 1280x720 o processo fica vivo indefinidamente
+(antes morria em 7,5 s), sem nenhuma linha de erro no log do Weston.
+
+Efeito colateral encontrado: qualquer saída com **status 0 e sessão curtíssima** não é
+"o usuário saiu do menu". O launcher agora só considera sucesso se durou ≥ 10 s; senão
+tenta o driver `drm` e, se também falhar, escreve na tela e no log.
+
+### 2. Nenhum botão responde: o RetroArch do Debian não tem perfil de joypad
+
+Diagnóstico objetivo, sem depender do que aparece na tela (driver de vídeo nulo, só
+para não tomar o display):
+
+```
+retroarch --appendconfig <(video_driver="null" audio_driver="null" input_driver="udev")
+[INFO] [udev]: Pad #0 (/dev/input/event3) supports 0 force feedback effects.
+[INFO] [Autoconf]: retrogame_joypad (18507/4353) not configured.
+```
+
+Causa: `dpkg -L retroarch | grep autoconfig` volta **vazio** — o pacote não traz
+nenhum perfil, e o projeto `retroarch-joypad-autoconfig` também não tem perfil para
+`retrogame_joypad`. Sem perfil, nenhuma ligação é criada.
+
+Correção (confirmada no aparelho): perfil próprio em
+`/root/.config/retroarch/autoconfig/udev/Rocknix_Gamepad.cfg`, com `input_device`,
+`input_vendor_id = "18507"`, `input_product_id = "4353"` e os índices calculados a
+partir do bitmap real (`/sys/class/input/event3/device/capabilities/key =
+"f00000000 0 0 0 7fdb000000000000 0 0 0 0"` → 17 botões, índices 0–16). Depois do
+perfil: `[Autoconf]: retrogame_joypad configured in port 1.` e, no teste do usuário,
+todos os botões, D-pad, L/R/L2/R2, L3/R3, F e os dois analógicos corretos.
+
 ## Cosmético: leve esticamento horizontal (relato no aparelho, 2026-10-24)
 
 - Sintoma: com a interface na orientação correta (`rotate-90`), a imagem fica

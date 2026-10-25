@@ -17,7 +17,7 @@ Resumo:
 | O que | Estado |
 | --- | --- |
 | Variante **`kodi`** (multimídia) | **pronta e validada** no X55 e X35H — build #100/#105, artefato 356 MB |
-| Variante **`retroarch`** (jogos) | **código completo, build sem fechar** — 4 bugs reais já corrigidos; o build **#116** (tag `retroarch-v0.6`) não terminou |
+| Variante **`retroarch`** (jogos) | **build #116 OK e validada no X55**: tela 1280x720 girada, áudio aberto no ALSA, **todos os botões e os 2 analógicos** |
 | X35H: áudio, vídeo 640x480@58,5 Hz, botões | **confirmados em hardware** |
 | X35H: USB | **não ancora**; já se sabe que **não é o papel OTG**. Falta o teste do pendrive |
 | X55 | tudo o que a imagem entrega foi validado, incluindo áudio no jack e no alto-falante |
@@ -34,6 +34,15 @@ Resumo:
    `Permission denied` (foi o que derrubou o build #112 com tudo mais correto).
 3. `[skip ci]` no commit de topo: também impede o build da **tag** que aponta para ele.
 4. `:` dentro de `name:` de um step no YAML — quebra o parse do workflow.
+5. Em Wayland girado, deixar `video_fullscreen_x/y = "0"` no RetroArch: ele pede a
+   superfície no modo **nativo** (720x1280) e o Weston mata o cliente
+   (`xdg_surface geometry ... larger than the configured fullscreen state`), com
+   **status 0** — parece "saiu normal" e a tela fica preta.
+6. Contar com perfil de joystick do pacote Debian do RetroArch: `dpkg -L retroarch |
+   grep autoconfig` é **vazio**. Sem `Rocknix_Gamepad.cfg` o log diz
+   `[Autoconf]: retrogame_joypad (...) not configured` e **nada** responde.
+7. Escrever autoconfig do RetroArch com código evdev: os números são a **posição** na
+   enumeração do driver udev (tabela em `docs/hardware-e-drivers.md` §3.2.1).
 
 ---
 

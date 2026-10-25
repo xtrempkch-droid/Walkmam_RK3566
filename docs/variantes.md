@@ -156,7 +156,8 @@ Mesmo desenho das duas variantes, para o comportamento ser previsível:
 1. lê `display_transform` de `/boot/walkmam.conf` (`auto` escolhe pelo modelo);
 2. sobe o **Weston** (backend DRM, `kiosk-shell`) com `transform` na saída `DSI-1` —
    é essa camada que gira a imagem;
-3. roda o app em Wayland;
+3. roda o app em Wayland — no RetroArch já com o **tamanho da saída girada** em
+   `video_fullscreen_x/y` (ver "Se o RetroArch não abrir");
 4. se o Weston falhar, cai para o caminho sem compositor (Kodi: `--windowing=gbm`;
    RetroArch: `video_driver=drm`), esperando 3 s para o DRM ser liberado;
 5. o motivo de qualquer falha vai para a **tela** (tty1) e para
@@ -176,8 +177,30 @@ experiências, grave duas imagens em dois cartões (ou use dois cartões por apa
 ## Se o RetroArch não abrir
 
 1. Leia `/boot/retroarch-start.log` no PC (partição FAT): ele diz se o Weston subiu,
-   qual driver foi tentado e o status de saída.
+   qual driver foi tentado, em que tamanho e o status de saída.
 2. Na tela (tty1) aparece a mesma informação de forma resumida.
 3. Console serial (`ttyS2`, 1500000n8) tem autologin do root; o `tty1` pertence ao app.
 4. O `diagnostico.txt` do cartão continua sendo gerado e traz DRM, áudio, entrada e
    rotação efetiva.
+
+### Sintomas já vistos (os dois primeiros custaram uma sessão inteira)
+
+| Sintoma no log | Causa | Correção |
+| --- | --- | --- |
+| `xdg_surface geometry (720 x 1280) is larger than the configured fullscreen state (1280 x 720)`, e o RetroArch "termina com status 0" | a saída foi girada pelo Weston, mas o app pediu a superfície no modo **nativo** do painel | o launcher passa `video_fullscreen_x/y` com o tamanho **já girado** (`walkmam_rotated_size`); nunca deixe em `"0"` |
+| `[Autoconf]: retrogame_joypad (…) not configured` | o pacote Debian do RetroArch **não traz** perfil de joypad | perfil em `/root/.config/retroarch/autoconfig/udev/Rocknix_Gamepad.cfg` (instalado pelo build) |
+| `RetroArch (wayland) terminou com status 0 apos 3s` seguido de "tentando video_driver=drm" | morte precoce, não saída do usuário | é o comportamento novo e desejado: abaixo de 10 s não conta como sucesso |
+
+Para inspecionar o RetroArch **sem tomar a tela** (útil por SSH, com o serviço
+rodando), use os drivers nulos — é assim que o autoconfig foi diagnosticado:
+
+```sh
+cat > /tmp/probe.cfg <<'CFG'
+video_driver = "null"
+audio_driver = "null"
+input_driver = "udev"
+log_verbose = "true"
+CFG
+timeout 12 retroarch --config /root/.config/retroarch/retroarch.cfg \
+    --appendconfig /tmp/probe.cfg --verbose 2>&1 | grep -iE "autoconf|joypad"
+```

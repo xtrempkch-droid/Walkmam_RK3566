@@ -581,6 +581,11 @@ jobs:
             exit 1
           fi
         done
+        if [ "$VARIANT" = "retroarch" ] && [ ! -f \
+             "variants/retroarch/overlay/root/.config/retroarch/autoconfig/udev/Rocknix_Gamepad.cfg" ]; then
+          echo "!!! perfil de controle (autoconfig) ausente: sem ele o joypad nao responde" >&2
+          exit 1
+        fi
         echo "--> ok: arquivos da variante presentes"
 
     - name: Build Minimal RootFS (Debian ARM64)
@@ -868,6 +873,21 @@ jobs:
             exit 1
           fi
           echo "--> retroarch.cfg ok: libretro_directory = \"$LIBRETRO_DIR_CFG\""
+
+          # O pacote Debian do RetroArch 1.14 nao traz NENHUM perfil de joypad
+          # (dpkg -L retroarch | grep autoconfig = vazio). Sem perfil o log diz
+          # "[Autoconf]: retrogame_joypad (18507/4353) not configured" e nenhum
+          # botao/analogico responde. Os numeros do perfil sao a POSICAO do botao
+          # na enumeracao do driver udev, nao o codigo evdev.
+          ACAO_CFG="variants/retroarch/overlay/root/.config/retroarch/autoconfig/udev/Rocknix_Gamepad.cfg"
+          echo "--> [retroarch] Perfil do controle (autoconfig)..."
+          sudo install -D -m 0644 "$ACAO_CFG" \
+            rootfs/root/.config/retroarch/autoconfig/udev/Rocknix_Gamepad.cfg
+          if ! sudo grep -qF 'input_device = "retrogame_joypad"' \
+              rootfs/root/.config/retroarch/autoconfig/udev/Rocknix_Gamepad.cfg; then
+            echo "!!! perfil do controle nao foi instalado" >&2
+            exit 1
+          fi
 
           echo "--> [retroarch] Diretórios de ROMs/saves/bios..."
           sudo mkdir -p rootfs/storage/roms \

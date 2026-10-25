@@ -13,6 +13,7 @@
 #   . /usr/local/share/walkmam/display.sh
 #   TRANSFORM=$(walkmam_read_transform)          # auto/normal/rotate-90/...
 #   walkmam_start_weston "$TRANSFORM" "$LOG"     # 0 = pronto, 1 = falhou
+#   walkmam_rotated_size "$TRANSFORM"            # tamanho da tela já girada
 #   ... roda o app em $WAYLAND_DISPLAY ...
 #   walkmam_stop_weston
 
@@ -57,6 +58,39 @@ walkmam_read_transform() {
         *)
             walkmam_transform_from_model
             ;;
+    esac
+}
+
+# Tamanho NATIVO da saída conectada, lido do DRM: "<largura> <altura>", sem
+# rotação (é o que o painel reporta, ex.: "720 1280" na X55). "0 0" = não achou.
+# WALKMAM_DRM_DIR existe para testar esta função fora do aparelho.
+walkmam_native_size() {
+    _drm=${WALKMAM_DRM_DIR:-/sys/class/drm}
+    _modo=
+    for _conector in "$_drm"/card*-*; do
+        [ -r "$_conector/status" ] || continue
+        [ "$(cat "$_conector/status" 2>/dev/null)" = connected ] || continue
+        _modo=$(sed -n '1p' "$_conector/modes" 2>/dev/null | tr -d '\r')
+        [ -n "$_modo" ] && break
+    done
+    case "$_modo" in
+        [0-9]*x[0-9]*) printf '%s %s\n' "${_modo%%x*}" "${_modo##*x}" ;;
+        *)             printf '0 0\n' ;;
+    esac
+}
+
+# Tamanho da saída COMO O WESTON A ENTREGA (já girada): é o que o app em
+# Wayland vê como tela cheia. Sem isso o app pede a superfície no modo nativo e
+# a sessão inteira é derrubada por violação de protocolo quando a saída gira.
+walkmam_rotated_size() {
+    _tamanho=$(walkmam_native_size)
+    _larg=${_tamanho%% *}
+    _alt=${_tamanho##* }
+    case "$1" in
+        rotate-90|rotate-270|flipped-rotate-90|flipped-rotate-270)
+            printf '%s %s\n' "$_alt" "$_larg" ;;
+        *)
+            printf '%s %s\n' "$_larg" "$_alt" ;;
     esac
 }
 

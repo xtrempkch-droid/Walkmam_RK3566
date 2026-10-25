@@ -102,7 +102,31 @@ capture() {
   for cfg in /root/.config/retroarch/retroarch.cfg; do
     [ -r "$cfg" ] || continue
     printf '%s:\n' "$cfg"
-    grep -E '^(video_driver|video_context_driver|audio_driver|libretro_directory|libretro_info_path|menu_driver)' "$cfg"
+    grep -E '^(video_driver|video_context_driver|video_fullscreen|audio_driver|libretro_directory|libretro_info_path|menu_driver)' "$cfg"
+  done
+  echo
+  # Sem perfil de autoconfig NENHUM botao responde no RetroArch (o pacote Debian
+  # nao traz nenhum). Aqui o diagnostico mostra se o perfil esta la e qual bitmap
+  # de botoes o kernel entrega — e dele que saem os indices do autoconfig.
+  echo "----- RetroArch: perfil de controle (autoconfig) -----"
+  if [ -d /root/.config/retroarch/autoconfig ]; then
+    find /root/.config/retroarch/autoconfig -name '*.cfg' 2>/dev/null | while read -r f; do
+      printf '%s: ' "$f"
+      grep -q 'input_device' "$f" && grep 'input_device' "$f" || echo "(sem input_device)"
+    done
+  else
+    echo "AUSENTE: sem autoconfig o joypad nao responde (log: 'not configured')"
+  fi
+  echo
+  echo "----- entrada: nome e capabilities do joypad (vide docs/hardware-e-drivers.md §3.2.1) -----"
+  for ev in /sys/class/input/event*/device/capabilities/key; do
+    [ -r "$ev" ] || continue
+    dev=$(dirname "$(dirname "$ev")")          # .../input/eventN/device
+    nodo=$(basename "$(dirname "$dev")")       # eventN
+    printf '%s -> %s | key=%s' "$nodo" \
+      "$(cat "$dev/name" 2>/dev/null)" "$(cat "$ev" 2>/dev/null)"
+    [ -r "$dev/capabilities/abs" ] && printf ' | abs=%s' "$(cat "$dev/capabilities/abs" 2>/dev/null)"
+    echo
   done
   echo
   echo "----- RetroArch: cores instalados -----"

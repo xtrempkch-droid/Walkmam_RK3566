@@ -12,28 +12,42 @@ está pronto, o que ainda é **hipótese** e exatamente o que testar e devolver.
 | Variante | Build | Artefato | Tamanho | Estado |
 | --- | --- | --- | --- | --- |
 | `kodi` (multimídia) | **#115** | `rk3566-x55-mainline-sdcard-image` | 356 MB | **validada em hardware** (X55 e X35H) |
-| `retroarch` (jogos) | **#116** (tag `retroarch-v0.6`) | `rk3566-x55-retroarch-sdcard-image` | 536 MB | **build OK; falta testar no aparelho** |
+| `retroarch` (jogos) | **#116** (tag `retroarch-v0.6`) | `rk3566-x55-retroarch-sdcard-image` | 536 MB | **validada no X55** (tela/rotação/áudio/controles); ver correções abaixo |
 
 Pegue em **Actions → run #115 / #116 → Artifacts**. Grave em cartões separados (são
 duas imagens completas, não dá para trocar de variante pelo cartão).
 
-### Próximo passo: testar a imagem de jogos
+### Variante de jogos: o que já foi validado (2026-10-24, X55)
 
-Nada da variante `retroarch` foi testado em hardware ainda. Checklist no aparelho:
+O primeiro boot da imagem de jogos **não** abria: o RetroArch era morto pelo Weston
+em 7,5 s (violação de protocolo) e nenhum botão respondia. Os dois bugs foram
+corrigidos e **confirmados no aparelho**:
 
-1. **Boot e tela** — deve mostrar o menu do RetroArch, não tela preta. Se não abrir,
-   `/boot/retroarch-start.log` (partição FAT, lê-se no PC) diz qual driver foi tentado
-   e o status.
-2. **Rotação** — a imagem sai com `display_transform=auto` (`X55 → rotate-90`,
-   `X35S/X35H → normal`). Se estiver de ponta a cabeça, edite `walkmam.conf` no cartão.
-3. **Áudio** — navegar no menu já produz som (a placa `rk817_ext` é a mesma do Kodi).
-4. **Controles** — o joypad ROCKNIX deve aparecer como `retrogame_joypad`. Se não
-   responder, `cat /proc/bus/input/devices` no console serial.
-5. **Jogos** — copiar uma ROM em `/roms/<sistema>/` na partição FAT (há um
-   `LEIA-ME.txt` lá) e abrir por *Load Content*. PS1 exige BIOS em `/storage/bios`.
+| Item | Estado |
+| --- | --- |
+| Boot / serviço no tty1 | OK — `retroarch.service` ativo, sem reinício em laço |
+| Tela 1280x720 girada (`rotate-90`) | **OK** (menu na horizontal) |
+| Áudio | OK — `/dev/snd/pcmC0D0p` aberto pelo RetroArch, mux em `HP` |
+| Botões, D-pad, L/R/L2/R2, L3/R3, F | **OK** (teste do usuário) |
+| Analógicos (os dois) | **OK** (teste do usuário) |
+| Jogo de verdade (carregar ROM) | **não testado** — próximo passo |
 
-Se algo falhar, `/boot/diagnostico.txt` já traz DRM, áudio, entrada, rotação efetiva,
-config do RetroArch e a lista de cores instalados.
+As duas correções estão no repositório e **ainda não estão em nenhuma imagem**:
+1. `video_fullscreen_x/y` = tamanho da saída **já girada**, calculado por
+   `walkmam_rotated_size` (`common/overlay/usr/local/share/walkmam/display.sh`);
+2. perfil de controle em `variants/retroarch/overlay/root/.config/retroarch/autoconfig/udev/Rocknix_Gamepad.cfg`.
+
+Para valer no cartão, gere uma imagem nova (`git tag retroarch-vN && git push origin
+retroarch-vN`). Se preferir testar sem regravar, os dois arquivos podem ser copiados
+por `scp` e o serviço reiniciado.
+
+### Se algo falhar, onde olhar
+
+1. `/boot/retroarch-start.log` — qual driver foi tentado, em que tamanho, e a duração
+   da sessão (sessão abaixo de 10 s é tratada como falha, não como saída do usuário).
+2. `/boot/diagnostico.txt` — DRM, áudio, entrada, rotação efetiva, cfg do RetroArch e
+   a lista de cores instalados.
+3. Console serial (`ttyS2`, autologin root) — o `tty1` pertence ao app.
 
 ### Pendência aberta no X35H: USB
 

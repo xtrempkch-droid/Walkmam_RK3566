@@ -20,6 +20,22 @@ WALKMAM_DISPLAY_LIB=${WALKMAM_DISPLAY_LIB:-/usr/local/share/walkmam/display.sh}
 
 TRANSFORM=$(walkmam_read_transform)
 
+# A rotação é aplicada pelo Weston (transform= na saída), mas o RetroArch em
+# Wayland dimensiona a PRÓPRIA superfície com video_fullscreen_x/y. Em fullscreen
+# com esses valores em 0 ele usa o modo NATIVO do painel (720x1280 na X55) e pede
+# uma superfície maior do que o fullscreen girado (1280x720), o que é violação de
+# protocolo: o Weston derruba o cliente e a tela fica preta.
+#   xdg_surface geometry (720 x 1280) is larger than the configured
+#   fullscreen state (1280 x 720)
+# Por isso o tamanho da saída JÁ GIRADA é calculado e passado por --appendconfig.
+SIZE=$(walkmam_rotated_size "$TRANSFORM")
+SIZE_W=${SIZE%% *}
+SIZE_H=${SIZE##* }
+
+# Sessão Wayland mais curta que isto não é "o usuário saiu do menu": é morte
+# precoce (protocolo, driver, ...). Serve para não declarar sucesso com tela preta.
+MIN_SEGUNDOS=10
+
 _log_dir=$(dirname "$RETROARCH_LOG")
 if [ ! -d "$_log_dir" ] || [ ! -w "$_log_dir" ]; then
     RETROARCH_LOG=/var/log/retroarch-start.log
@@ -41,17 +57,55 @@ if [ -n "${WALKMAM_ROM:-}" ]; then
     set -- "$@" "$WALKMAM_ROM"
 fi
 
+# Escreve o arquivo de override e imprime o caminho. $1 = "wayland" ou "drm".
+# --appendconfig é aplicado DEPOIS do --config, então vence o retroarch.cfg.
+_escrever_override() {
+    : "${XDG_RUNTIME_DIR:=/run/walkmam-wayland}"
+    _arquivo="$XDG_RUNTIME_DIR/retroarch-override.cfg"
+    mkdir -p "$XDG_RUNTIME_DIR"
+
+    if [ "$1" = drm ]; then
+        # Sem compositor a rotação não é aplicada por ninguém (o driver "drm"
+        # do 1.14 não implementa set_rotation), então o tamanho correto é o
+        # nativo do painel — na X55 a imagem sai deitada, mas legível.
+        _tam=$(walkmam_native_size)
+    else
+        _tam="$SIZE"
+    fi
+
+    _l=${_tam%% *}
+    _a=${_tam##* }
+
+    : > "$_arquivo"
+    if [ "$_l" -gt 0 ] 2>/dev/null && [ "$_a" -gt 0 ] 2>/dev/null; then
+        printf 'video_fullscreen_x = "%s"\nvideo_fullscreen_y = "%s"\n' "$_l" "$_a" >> "$_arquivo"
+    fi
+    if [ "$1" = drm ]; then
+        # Identificadores no 1.14: driver "drm" (no 1.17+ virou "kmsdrm") e
+        # contexto "kms". O 1.14 NÃO tem --video-driver na linha de comando.
+        printf 'video_driver = "drm"\nvideo_context_driver = "kms"\n' >> "$_arquivo"
+    fi
+    printf '%s\n' "$_arquivo"
+}
+
 ok=0
 
 # Tentativa 1: Weston (Wayland) — é o caminho que aplica a rotação.
+_inicio=$(date +%s)
 if walkmam_start_weston "$TRANSFORM" "$RETROARCH_LOG"; then
-    echo "Weston pronto; iniciando RetroArch (video_driver=wayland)" >> "$RETROARCH_LOG"
+    echo "Weston pronto; iniciando RetroArch (wayland, tela ${SIZE_W}x${SIZE_H})" >> "$RETROARCH_LOG"
+    _override=$(_escrever_override wayland)
     set +e
-    "$RETROARCH_BIN" "$@" >> "$RETROARCH_LOG" 2>&1
+    "$RETROARCH_BIN" "$@" --appendconfig "$_override" >> "$RETROARCH_LOG" 2>&1
     status=$?
     set -e
-    echo "RetroArch (wayland) terminou com status $status" >> "$RETROARCH_LOG"
-    [ "$status" -eq 0 ] && ok=1
+    _durou=$(( $(date +%s) - _inicio ))
+    echo "RetroArch (wayland) terminou com status $status apos ${_durou}s" >> "$RETROARCH_LOG"
+    if [ "$status" -eq 0 ] && [ "$_durou" -ge "$MIN_SEGUNDOS" ]; then
+        ok=1
+    elif [ "$status" -eq 0 ]; then
+        echo "sessao curta demais (${_durou}s): tratando como falha, nao como saida do usuario" >> "$RETROARCH_LOG"
+    fi
 else
     walkmam_say_tty "RETROARCH: Weston falhou. Veja /boot/retroarch-start.log. Tentando KMS/DRM direto..."
 fi
@@ -63,23 +117,18 @@ walkmam_stop_weston
 if [ "$ok" -eq 0 ]; then
     sleep 3
     walkmam_say_tty "RETROARCH: tentando video_driver=drm (sem Weston)..."
-    # Como trocar o driver aqui: o RetroArch 1.14 NÃO tem a opção
-    # --video-driver (ela apareceu em versões posteriores). O jeito que existe é
-    # um arquivo com --appendconfig, que é aplicado depois do --config e vence.
-    # Identificadores no 1.14: driver "drm" (no 1.17+ virou "kmsdrm") e contexto
-    # "kms". Ver docs/variantes.md.
-    _cfg_extra="$XDG_RUNTIME_DIR/retroarch-drm.cfg"
-    mkdir -p "$XDG_RUNTIME_DIR"
-    cat > "$_cfg_extra" << EOF_EXTRA
-video_driver = "drm"
-video_context_driver = "kms"
-EOF_EXTRA
+    _cfg_extra=$(_escrever_override drm)
+    _inicio=$(date +%s)
     set +e
     "$RETROARCH_BIN" "$@" --appendconfig "$_cfg_extra" >> "$RETROARCH_LOG" 2>&1
     status=$?
     set -e
-    echo "RetroArch (drm) terminou com status $status" >> "$RETROARCH_LOG"
-    [ "$status" -eq 0 ] && ok=1
+    _durou=$(( $(date +%s) - _inicio ))
+    echo "RetroArch (drm) terminou com status $status apos ${_durou}s" >> "$RETROARCH_LOG"
+    # Mesmo critério da tentativa 1: sair cedo com status 0 não é sucesso.
+    if [ "$status" -eq 0 ] && [ "$_durou" -ge "$MIN_SEGUNDOS" ]; then
+        ok=1
+    fi
 fi
 
 # Sair do RetroArch pelo menu é uma saída normal (status 0). Se nada rodou,
