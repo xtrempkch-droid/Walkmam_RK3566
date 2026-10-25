@@ -3,21 +3,38 @@
 Ponto de partida para continuar o trabalho depois de testar no aparelho. Diz o que já
 está pronto, o que ainda é **hipótese** e exatamente o que testar e devolver.
 
-## PONTO DE RETOMADA (2026-10-24)
+## PONTO DE RETOMADA (2026-10-25)
 
 > Leia esta seção antes de qualquer coisa. O resto do documento é o histórico.
 
-### As duas imagens SAÍRAM (ambas `success`)
+### Próximos passos, na ordem
+
+1. **Testar um jogo de verdade** na imagem #119 (ROM em `/roms/<sistema>/`, PS1 exige
+   BIOS em `/storage/bios`). É o único item da variante de jogos que falta.
+2. **X35H — teste do pendrive** (2 min, pendrive ainda não plugado): plugar e ver
+   `ls /sys/bus/usb/devices/`. Decisão: apareceu algo → porta é **host** e um adaptador
+   USB-Ethernet dá rede/SSH; nada → porta só de carga.
+3. **X35H — rádio** (sem Wi-Fi e sem BT): `mmc3: Failed to initialize a non-removable
+   card`. Precisa medir `pwrseq`/regulador no aparelho; não é ajuste de software.
+4. Longo prazo (não bloqueia): VA-API (`va_openDriver() returns -1`), senha/SSH do root,
+   CI chamar `build/create-image.sh`, mover scripts compartilhados de
+   `variants/kodi/overlay/` para `common/overlay/`.
+
+### As duas imagens (ambas `success`)
 
 | Variante | Build | Artefato | Tamanho | Estado |
 | --- | --- | --- | --- | --- |
-| `kodi` (multimídia) | **#115** | `rk3566-x55-mainline-sdcard-image` | 356 MB | **validada em hardware** (X55 e X35H) |
-| `retroarch` (jogos) | **#116** (tag `retroarch-v0.6`) | `rk3566-x55-retroarch-sdcard-image` | 536 MB | **validada no X55 e no X35H** (tela/rotação/áudio/controles); correções pendentes de imagem nova |
+| `kodi` (multimídia) | **#120** | `rk3566-x55-mainline-sdcard-image` | ~356 MB | validada em hardware; #120 acrescenta o `dmesg` de USB no `usb-watch` |
+| `retroarch` (jogos) | **#119** (tag `retroarch-v0.9`) | `rk3566-x55-retroarch-sdcard-image` | 536 MB | **use esta para jogos**: tela, rotação, áudio e controles validados no X55 e no X35H |
 
-Pegue em **Actions → run #115 / #116 → Artifacts**. Grave em cartões separados (são
-duas imagens completas, não dá para trocar de variante pelo cartão).
+Pegue em **Actions → run #120 / #119 → Artifacts**. São duas imagens completas: grave em
+cartões separados (não dá para trocar de variante pelo cartão).
 
-### Variante de jogos: o que já foi validado (2026-10-24, X55)
+O que **entrou** em #119 (e não estava em nenhuma imagem antes):
+`video_fullscreen_x/y` com o tamanho já girado, perfil de controle
+`Rocknix_Gamepad.cfg`, e o critério de "sessão abaixo de 10 s não é sucesso".
+
+### Variante de jogos: o que já foi validado (X55 e X35H)
 
 O primeiro boot da imagem de jogos **não** abria: o RetroArch era morto pelo Weston
 em 7,5 s (violação de protocolo) e nenhum botão respondia. Os dois bugs foram
@@ -33,14 +50,10 @@ corrigidos e **confirmados no aparelho**:
 | X35H (mesmo cartão): 640x480, `normal` | **OK** — sessão de 81 s (antes morria em 7,5 s) |
 | Jogo de verdade (carregar ROM) | **não testado** — próximo passo |
 
-As duas correções estão no repositório e **ainda não estão em nenhuma imagem**:
-1. `video_fullscreen_x/y` = tamanho da saída **já girada**, calculado por
-   `walkmam_rotated_size` (`common/overlay/usr/local/share/walkmam/display.sh`);
-2. perfil de controle em `variants/retroarch/overlay/root/.config/retroarch/autoconfig/udev/Rocknix_Gamepad.cfg`.
-
-Para valer no cartão, gere uma imagem nova (`git tag retroarch-vN && git push origin
-retroarch-vN`). Se preferir testar sem regravar, os dois arquivos podem ser copiados
-por `scp` e o serviço reiniciado.
+As duas correções **já estão na imagem #119**. Se for gerar outra no futuro, o caminho
+é `git tag retroarch-vN && git push origin retroarch-vN` (push na `main` gera `kodi`).
+Cuidado: a marca de skip do CI vale no **corpo** da mensagem — documentá-la cancela o
+build (custou 3 tags silenciosas nesta sessão).
 
 ### Se algo falhar, onde olhar
 

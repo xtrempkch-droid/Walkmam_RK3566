@@ -9,17 +9,18 @@ Idioma do repositório: **português**. Mantenha comentários, commits e docs em
 
 ---
 
-## 0. ONDE PARAMOS (2026-10-24) — leia antes de tudo
+## 0. ONDE PARAMOS (2026-10-25) — leia antes de tudo
 
-Detalhe completo em [`docs/status.md`](status.md#-ponto-de-retomada-2026-10-24-fim-da-sessão).
+Detalhe completo em [`docs/status.md`](status.md) — seção "PONTO DE RETOMADA" no topo.
 Resumo:
 
 | O que | Estado |
 | --- | --- |
-| Variante **`kodi`** (multimídia) | **pronta e validada** no X55 e X35H — build #100/#105, artefato 356 MB |
-| Variante **`retroarch`** (jogos) | **build #116 OK e validada no X55**: tela 1280x720 girada, áudio aberto no ALSA, **todos os botões e os 2 analógicos** |
+| Variante **`kodi`** (multimídia) | **pronta e validada** no X55 e X35H — build #120 (~356 MB) |
+| Variante **`retroarch`** (jogos) | **imagem #119 validada no X55 e no X35H**: tela girada, áudio no ALSA, **todos os botões e os 2 analógicos**, sessão estável (X35H: 81 s) |
 | X35H: áudio, vídeo 640x480@58,5 Hz, botões | **confirmados em hardware** |
-| X35H: USB | **não ancora**; já se sabe que **não é o papel OTG**. Falta o teste do pendrive |
+| X35H: USB | **falha no controlador**: `dwc3 ... failed to enable ep0out` (só no X35H). DTBs oficiais comparados e idênticos. Falta o teste do pendrive |
+| X35H: Wi-Fi/BT | **não existem** nesta imagem: `mmc3: Failed to initialize a non-removable card` (SDIO do rádio não responde) |
 | X55 | tudo o que a imagem entrega foi validado, incluindo áudio no jack e no alto-falante |
 
 **Para gerar a imagem de jogos:** `git tag retroarch-vN && git push origin retroarch-vN`
@@ -505,3 +506,42 @@ outro commit resolve sem force-push na branch. Para conferir se o build nasceu, 
   cores no menu). Se falhar, o Preflight diz o motivo sem compilar. No X35H falta o
   teste do pendrive para decidir se a porta é host-only.
 
+
+### 2026-10-25 (1) — Copilot (retroarch no hardware: 2 bugs; X35H: USB e rádio)
+
+- **A variante de jogos nunca tinha rodado.** Ao rodar, dois bugs reais:
+  1. **Tela preta com serviço "success":** `xdg_surface geometry (720 x 1280) is
+     larger than the configured fullscreen state (1280 x 720)`. O Weston gira a saída,
+     mas o RetroArch dimensiona a **própria superfície** com `video_fullscreen_x/y`;
+     com `"0"` ele usa o modo **nativo** do painel e pede superfície maior que o
+     fullscreen. O Weston mata o cliente e o RetroArch sai com **status 0** — parecia
+     saída normal do usuário. Correção: `walkmam_rotated_size()` em `display.sh`
+     (modo do DRM + transform) passado por `--appendconfig`; medido: 7,5 s → estável.
+     Junto: sessão com status 0 e **menos de 10 s** deixou de contar como sucesso.
+  2. **Nenhum botão respondia:** `[Autoconf]: retrogame_joypad (18507/4353) not
+     configured`. O pacote Debian do RetroArch 1.14 **não traz perfil nenhum**
+     (`dpkg -L retroarch | grep autoconfig` = vazio) e o projeto upstream de
+     autoconfigs não tem perfil para `retrogame_joypad`. Criei `Rocknix_Gamepad.cfg`.
+     **A armadilha:** os números não são códigos evdev, são a **posição** na
+     enumeração do driver udev — calculei do bitmap real
+     (`/sys/class/input/event3/device/capabilities/key`). Depois do perfil: 17 botões,
+     D-pad, L/R/L2/R2, L3/R3, F e os 2 analógicos corretos (teste do usuário).
+- Diagnosticado **sem tomar a tela** (por SSH, com o serviço rodando): `video_driver =
+  "null"`, `audio_driver = "null"`, `input_driver = "udev"` e `--verbose`.
+- **X35H — USB:** a linha `dwc3 fcc00000.usb: failed to enable ep0out` existe **só** no
+  X35H. Vem de `__dwc3_gadget_ep_enable()` dentro de `dwc3_gadget_start()`: o gadget
+  aborta **antes** de negociar com o host, então papel/cabo/`dr_mode` não resolvem.
+  Para encerrar a dúvida de device tree, baixei o release **ROCKNIX 20261001** e
+  comparei os DTBs **oficiais** das duas máquinas: `usb@fcc00000`, `usb@fd000000` e
+  `usb2phy@fe8a0000` são **idênticos** (só os rótulos dos botões mudam). O
+  `rk817-charger/online` é `0` no X35H contra `1` no X55.
+- **X35H — rádio:** `mmc3: Failed to initialize a non-removable card` → **sem Wi-Fi e
+  sem BT** (`wlan0` ausente, `hci0` sem endereço). Nós de mmc idênticos aos da X55.
+- `usb-watch` passou a gravar o `dmesg` de USB **na foto inicial** (antes só "na
+  mudança", e no X35H o estado nunca muda — foi por isso que o `ep0out` demorou).
+- **Armadilha de CI que custou 3 tags:** a marca de skip vale no **corpo** da mensagem,
+  então o commit que **documentava** a marca também foi ignorado (v0.7 e v0.8 não
+  geraram build). Ao documentar, escreva "skip-ci" sem os colchetes.
+- **Estado:** #119 (retroarch, 536 MB) e #120 (kodi) verdes. Falta: testar um jogo de
+  verdade; no X35H, o teste do pendrive (decide se a porta é host) e o rádio (precisa
+  medir `pwrseq`/regulador no aparelho).
