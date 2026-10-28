@@ -638,3 +638,18 @@ outro commit resolve sem force-push na branch. Para conferir se o build nasceu, 
 - Próximo: gerar imagem e testar (a) boot com sistema no eMMC via
   `/usr/local/bin/install-image-to-emmc.sh`, (b) boot com o sistema no SD2, (c) inserir
   o cartão de dados com o aparelho ligado e ver `/boot/roms/sdcard2` aparecer.
+
+#### Correção: run #124 falhou em "Create SD Card Image" (`/dev/loop0p1 does not exist`)
+
+- **Sintoma:** `mount: /mnt/boot: special device /dev/loop0p1 does not exist`, depois de
+  `mkfs.vfat`/`mkfs.ext4` darem certo e do `dd` do U-Boot.
+- **Causa:** rodar `blkid` na **partição do loop** logo após o `mkfs` (`blkid -s PARTUUID
+  -o value ${ROOT_DEV}`) fazia o kernel/udev reler a tabela e **derrubar os nós**
+  `/dev/loop0pN` antes do mount.
+- **Correção:** o PARTUUID de uma tabela DOS/MBR é `<assinatura do disco>-<NN>`, e a
+  assinatura sai do **arquivo** com `sfdisk --disk-id` (não abre o loop). Conferido:
+  `sfdisk --disk-id` → `0xd2ee80d2` e `blkid -p -s PTUUID` → `d2ee80d2`. Além disso, o
+  CI agora espera/recria os nós (`partprobe` + `mknod` pelo major:minor do sysfs) antes
+  de montar, e **confere** o PARTUUID contra a partição montada.
+- **Lição:** em script de criação de imagem, **não** toque no loop device com `blkid`
+  entre o `mkfs` e o `mount`; leia a assinatura do arquivo.

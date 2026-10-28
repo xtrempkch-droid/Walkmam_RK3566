@@ -136,17 +136,47 @@ mkfs.ext4 -F -L ROOTFS "$ROOT_DEV"
 # root= pelo PARTUUID, nao por /dev/mmcblk1p2: a mesma imagem pode estar no
 # eMMC (mmcblk0), no SD1 (mmcblk1) ou no SD2 (mmcblk2), e o nome muda.
 # O PARTUUID acompanha a imagem, entao o mesmo extlinux.conf serve nas tres.
-ROOT_UUID=$(blkid -s PARTUUID -o value "$ROOT_DEV")
-if [[ -z $ROOT_UUID ]]; then
-    echo "Não foi possível ler o PARTUUID de $ROOT_DEV" >&2
+#
+# O PARTUUID de uma tabela DOS/MBR e "<assinatura do disco>-<NN>", e a assinatura
+# sai do proprio arquivo (sfdisk --disk-id), sem abrir o dispositivo de loop:
+# rodar `blkid` na particao do loop logo apos o mkfs fazia o kernel/udev reler a
+# tabela e derrubar /dev/loopNp1 (run #124 do CI falhou exatamente assim, com
+# "mount: /mnt/boot: special device /dev/loop0p1 does not exist").
+DISK_ID=$(sfdisk --disk-id "$IMAGE_FILE" 2>/dev/null | tr -d '[:space:]')
+DISK_ID=${DISK_ID#0x}
+if [[ ! $DISK_ID =~ ^[0-9a-fA-F]{8}$ || $DISK_ID == 00000000 ]]; then
+    echo "Assinatura de disco inválida em $IMAGE_FILE: '$DISK_ID'" >&2
     exit 1
 fi
+ROOT_UUID="$DISK_ID-02"
 echo "root=PARTUUID=$ROOT_UUID"
 dd if="$UBOOT_DIR/idbloader.img" of="$LOOP_DEV" seek=64 conv=notrunc,fsync
 dd if="$UBOOT_DIR/u-boot.itb" of="$LOOP_DEV" seek=16384 conv=notrunc,fsync
 
+# O dd no dispositivo inteiro pode fazer o kernel/udev reler a tabela e derrubar
+# /dev/loopNpN. Espera os nós voltarem (e recria pelo major:minor, se preciso)
+# antes de montar.
+for _ in {1..10}; do
+    [[ -b $BOOT_DEV && -b $ROOT_DEV ]] && break
+    partprobe "$LOOP_DEV" 2>/dev/null || true
+    create_partition_device 1 "$BOOT_DEV" || true
+    create_partition_device 2 "$ROOT_DEV" || true
+    sleep 1
+done
+if [[ ! -b $BOOT_DEV || ! -b $ROOT_DEV ]]; then
+    echo "Partições do loop não apareceram: $BOOT_DEV / $ROOT_DEV" >&2
+    exit 1
+fi
+
 mount "$BOOT_DEV" "$BOOT_MOUNT"
 mount "$ROOT_DEV" "$ROOT_MOUNT"
+
+# Confere o root= que vai no extlinux contra a partição recém-formatada.
+_real_partuuid=$(blkid -s PARTUUID -o value "$ROOT_DEV" 2>/dev/null || true)
+if [[ -n $_real_partuuid && $_real_partuuid != "$ROOT_UUID" ]]; then
+    echo "root=PARTUUID=$ROOT_UUID não bate com a partição ($_real_partuuid)" >&2
+    exit 1
+fi
 cp "$KERNEL_DIR/arch/arm64/boot/Image" "$BOOT_MOUNT/Image"
 mkdir -p "$BOOT_MOUNT/dtbs" "$BOOT_MOUNT/extlinux"
 for dtb in "$KERNEL_DIR"/arch/arm64/boot/dts/rockchip/rk3566-powkiddy-*.dtb; do

@@ -1054,11 +1054,29 @@ jobs:
         # tres midias diferentes e o nome do dispositivo muda (ver abaixo).
         # PARTUUID e o mesmo em qualquer midia porque e gravado junto com a
         # imagem, entao a MESMA imagem boota no eMMC, no SD1 e no SD2.
-        ROOT_UUID=$(blkid -s PARTUUID -o value ${ROOT_DEV})
-        if [ -z "$ROOT_UUID" ]; then
-          echo "!!! nao consegui ler o PARTUUID de ${ROOT_DEV}" >&2
+        #
+        # O PARTUUID de uma tabela DOS/MBR e "<assinatura do disco>-<NN>", e a
+        # assinatura sai do proprio arquivo da imagem (sfdisk --disk-id), SEM
+        # abrir o dispositivo de loop. Isso importa: rodar `blkid` na particao do
+        # loop logo depois do mkfs fazia o kernel/udev reler a tabela e derrubar
+        # /dev/loop0p1, e o mount seguinte falhava com
+        #   mount: /mnt/boot: special device /dev/loop0p1 does not exist
+        # (aconteceu no run #124). A regra foi conferida contra o blkid:
+        #   sfdisk --disk-id -> 0xd2ee80d2   blkid PTUUID -> d2ee80d2
+        DISK_ID=$(sfdisk --disk-id "${IMAGE_NAME}" 2>/dev/null | tr -d '[:space:]')
+        DISK_ID=${DISK_ID#0x}
+        case "$DISK_ID" in
+          [0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]) ;;
+          *)
+            echo "!!! assinatura de disco invalida em ${IMAGE_NAME}: '${DISK_ID}'" >&2
+            exit 1
+            ;;
+        esac
+        if [ "$DISK_ID" = "00000000" ]; then
+          echo "!!! assinatura de disco zerada; o kernel nao resolveria root=PARTUUID" >&2
           exit 1
         fi
+        ROOT_UUID="${DISK_ID}-02"
         echo "--> root=PARTUUID=${ROOT_UUID}"
 
         echo "--> Gravando U-Boot mainline nos setores corretos..."
@@ -1069,8 +1087,44 @@ jobs:
 
         echo "--> Montando partições..."
         mkdir -p /mnt/boot /mnt/rootfs
+
+        # O dd no dispositivo inteiro (U-Boot) pode fazer o kernel/udev reler a
+        # tabela de particoes e derrubar os nos /dev/loop0pN — foi o que falhou
+        # no run #124. Antes de montar: re-le a tabela, espera os nos voltarem e,
+        # se nao voltarem, recria pelo major:minor do sysfs (mesma tecnica do
+        # build/create-image.sh).
+        _mknod_part() {
+          [ -b "$2" ] && return 0
+          _devf="/sys/block/$(basename ${LOOP_DEV})/$(basename ${LOOP_DEV})p$1/dev"
+          [ -r "$_devf" ] || return 1
+          IFS=: read -r _maj _min < "$_devf"
+          mknod "$2" b "$_maj" "$_min"
+        }
+        for _tent in $(seq 1 10); do
+          [ -b ${BOOT_DEV} ] && [ -b ${ROOT_DEV} ] && break
+          partprobe ${LOOP_DEV} 2>/dev/null || true
+          _mknod_part 1 ${BOOT_DEV} || true
+          _mknod_part 2 ${ROOT_DEV} || true
+          sleep 1
+        done
+        if [ ! -b ${BOOT_DEV} ] || [ ! -b ${ROOT_DEV} ]; then
+          echo "!!! particoes do loop nao apareceram: ${BOOT_DEV} / ${ROOT_DEV}" >&2
+          ls -l /dev/loop* 2>/dev/null | head -10 >&2
+          ls /sys/block/$(basename ${LOOP_DEV})/ 2>/dev/null >&2
+          exit 1
+        fi
+
         mount ${BOOT_DEV} /mnt/boot
         mount ${ROOT_DEV} /mnt/rootfs
+
+        # Confere que o root= que vai no extlinux aponta para a particao que a
+        # gente acabou de formatar — erro aqui e aparelho que nao inicia.
+        _real_partuuid=$(blkid -s PARTUUID -o value ${ROOT_DEV} 2>/dev/null || true)
+        if [ -n "$_real_partuuid" ] && [ "$_real_partuuid" != "$ROOT_UUID" ]; then
+          echo "!!! root=PARTUUID=${ROOT_UUID} nao bate com a particao (${_real_partuuid})" >&2
+          exit 1
+        fi
+        echo "--> PARTUUID conferido: ${_real_partuuid:-${ROOT_UUID}}"
 
         echo "--> Copiando kernel e device trees (X55 + X35S/X35H)..."
         cp kernel/arch/arm64/boot/Image /mnt/boot/
