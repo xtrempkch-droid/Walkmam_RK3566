@@ -358,6 +358,12 @@ da X35S (`rk3566-powkiddy-x35s*`), e o modelo reportado no device tree é
 
 **Em aberto e medido (2026-10-25):**
 
+* **USB — CORRIGIDO em 2026-10-28: funciona nesta unidade.** O item abaixo descrevia
+  `failed to enable ep0out`; no aparelho testado em 2026-10-28 o **gadget subiu** e a
+  rede USB (`usb0`, `10.55.0.1`) foi o caminho usado para SSH e para todo o
+  levantamento de armazenamento. Ou seja: o defeito **não é de todo X35H** — pode ser
+  unidade, cabo ou versão de U-Boot/DTB. Continua valendo medir caso a caso; o
+  `usb-watch.log` mostra qual dos dois cenários aconteceu.
 * **USB não ancora — e a falha é do controlador, não do cabo.** O `dmesg` do X35H tem
   `dwc3 fcc00000.usb: failed to enable ep0out`, que **não existe** na X55. É
   `__dwc3_gadget_ep_enable()` abortando dentro de `dwc3_gadget_start()`: o gadget não
@@ -370,7 +376,42 @@ da X35S (`rk3566-powkiddy-x35s*`), e o modelo reportado no device tree é
   `wlan0` não existe e `hci0` fica sem endereço. Os nós de mmc também são idênticos aos
   da X55: é sequência de energia do módulo neste aparelho.
 
-### 5.2 Por que os 75 Hz "não aplicam" (não é limitação do hardware)
+### 5.2 Os três armazenamentos (eMMC + 2 slots SD) — medido em 2026-10-28
+
+Mapa real, extraído do aparelho (`/sys/block/*/device` aponta para a controladora):
+
+| Alias DT | Controladora | Driver | Mídia | Tamanho medido | Detecção de cartão |
+| --- | --- | --- | --- | --- | --- |
+| `mmc0` | `mmc@fe310000` | `sdhci-dwcmshc` | **eMMC** (`mmcblk0`) | **3776 MiB** | `non-removable` |
+| `mmc1` | `mmc@fe2b0000` | `dwmmc_rockchip` | **SD1** (`mmcblk1`) | o cartão | **sem `cd-gpios`** |
+| `mmc2` | `mmc@fe000000` | `dwmmc_rockchip` | **SD2** (`mmcblk2`) | o cartão | **sem `cd-gpios`** |
+| `mmc3` | `mmc@fe2c0000` | `dwmmc_rockchip` | SDIO do rádio | — | `non-removable` |
+
+Consequências que custam tempo se ignoradas:
+
+1. **`root=/dev/mmcblk1p2` é frágil.** O sistema pode estar no eMMC (`mmcblk0`), no SD1
+   (`mmcblk1`) ou no SD2 (`mmcblk2`) e o nome muda. A imagem usa **`root=PARTUUID=<do
+   build>`** (o PARTUUID acompanha a imagem, então o mesmo `extlinux.conf` vale nas
+   três mídias). Validado no aparelho: `VFS: Mounted root (ext4 filesystem) on device
+   179:130` com `root=PARTUUID=40d50178-02`.
+2. **O eMMC tem 3776 MiB.** A imagem já foi de 4096 MiB — **não cabia**, e um `dd` maior
+   que o disco termina em `No space left on device` deixando instalação truncada. Agora
+   o padrão é **3584 MiB** (`WALKMAN_IMAGE_SIZE_MB` para mudar).
+3. **O U-Boot mainline só varria `mmc1 mmc0`** (`BOOT_TARGETS` em
+   `include/configs/rockchip-common.h`): um sistema no **SD2 nunca iniciava**. O build
+   define `BOOT_TARGETS "mmc1 mmc0 mmc2 nvme scsi usb pxe dhcp spi"` no header do board
+   (antes do `#include` do `rk3568_common.h`, que respeita o `#ifndef`).
+4. **Nenhum dos dois slots tem `cd-gpios`** no DTS: o MMC core marca os dois como
+   `removable=0` e **não percebe** cartão inserido depois do boot. `broken-cd` (polling)
+   resolveria no nosso DTB, mas a X35H roda o **DTB oficial da ROCKNIX**, então o
+   hotplug é feito no software: `walkmam-extra-storage.service` religa o slot
+   (`unbind`/`bind` no `dwmmc_rockchip`) — verificado no aparelho, o cartão e as
+   partições voltam a ser detectados.
+5. **O eMMC de fábrica tem ROCKNIX em GPT**; a nossa imagem é MBR. Ao instalar no eMMC,
+   zere as tabelas antes (a GPT de backup continua no fim do disco e o kernel reclama
+   `GPT PMBR size mismatch`). É o que `tools/install-image-to-emmc.sh` faz.
+
+### 5.3 Por que os 75 Hz "não aplicam" (não é limitação do hardware)
 
 O `panel_description` da X35S lista **vários** modos `M`, e o driver
 `panel-generic-dsi` marca como **preferido** só o que tem `default=1` — no caso o de

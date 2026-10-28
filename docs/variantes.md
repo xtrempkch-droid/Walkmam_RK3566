@@ -65,24 +65,46 @@ no `retroarch.cfg`. Melhor quebrar no CI do que descobrir no aparelho.
 
 ```text
 /boot/roms/<sistema>/        ROMs (partição FAT — lê-se no PC, ~90 MB livres)
+/boot/roms/sdcard1/          cartão de DADOS no slot SD1 (auto-montado, quando o
+/boot/roms/sdcard2/          sistema NÃO está naquele slot) — aparece no navegador
 /storage/roms/               ROMs também aqui, via Wi-Fi+scp (ext4, 4 GB)
+/storage/sdcard1, sdcard2    os mesmos cartões de dados (ponto de montagem real)
 /storage/saves/              save RAM (.srm)
 /storage/states/             savestates
 /storage/screenshots/        capturas
 /storage/bios/               BIOS (PS1 exige)
 ```
 
+**Cartões de dados (1 eMMC + 2 slots SD).** O aparelho tem três mídias e o sistema pode
+estar em qualquer uma delas (ver o mapa em
+[hardware-e-drivers.md](hardware-e-drivers.md#52-os-três-armazenamentos-emmc--2-slots-sd--medido-em-2026-10-28)).
+`walkmam-extra-storage.service` monta automaticamente as que **não** têm o sistema:
+
+| Situação | Resultado |
+| --- | --- |
+| sistema no SD1 | SD2 vira `/boot/roms/sdcard2` |
+| sistema no eMMC | SD1 → `/boot/roms/sdcard1` e SD2 → `/boot/roms/sdcard2` |
+| sistema no SD2 | SD1 vira `/boot/roms/sdcard1` |
+
+Regras de segurança do serviço: nunca monta partição com label `BOOT`/`ROOTFS` (é o
+sistema), nunca religa o slot que tem o root, e desmonta sozinho quando o cartão sai.
+Cartão **inserido depois do boot** é detectado (o slot é religado); não é preciso
+reiniciar. Log em `/boot/extra-storage.log`.
+
 **Por que ROMs em `/boot/roms` (FAT):** é o único lugar que se abre de um PC **sem
-rede**. Isso importa muito na **X35H**, onde a porta USB não ancora (ver
-[hardware-e-drivers.md](hardware-e-drivers.md), F12) — sem isso não haveria como pôr um
-jogo no aparelho. O menu do RetroArch já abre nessa pasta.
+rede**. O menu do RetroArch já abre nessa pasta — e os cartões de dados aparecem dentro
+dela (`sdcard1`/`sdcard2`), então não é preciso navegar pelo sistema de arquivos.
 
 A imagem cria `/boot/roms/LEIA-ME.txt` com a organização por sistema e os limites.
 
 **Limite:** a partição FAT tem 128 MB no total (kernel + dtbs ocupam parte). Dá para
-alguns jogos de 8/16 bits, não para uma coleção de PS1. Para biblioteca grande: conecte
-o Wi-Fi e use `scp` para `/storage/roms`. Saves e savestates ficam no ext4
-(`/storage/...`), não na FAT — assim não se perdem ao copiar ROMs.
+alguns jogos de 8/16 bits, não para uma coleção de PS1. Para biblioteca grande use um
+**cartão de dados** (o slot extra aceita vfat/exfat/ext4, sem limite prático) ou o Wi-Fi
+com `scp` para `/storage/roms`. Saves e savestates ficam no ext4 (`/storage/...`), não na
+FAT — assim não se perdem ao copiar ROMs.
+
+Para desligar a detecção de cartão inserido depois do boot (economizar energia),
+`extra_storage_hotplug=off` em `/boot/walkmam.conf`.
 
 ## Cores incluídos
 

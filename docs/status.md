@@ -36,6 +36,38 @@ O que **entrou** em #119 (e não estava em nenhuma imagem antes):
 `video_fullscreen_x/y` com o tamanho já girado, perfil de controle
 `Rocknix_Gamepad.cfg`, e o critério de "sessão abaixo de 10 s não é sucesso".
 
+### Armazenamento: 1 eMMC + 2 slots SD (2026-10-28, medido no aparelho)
+
+Antes desta sessão a imagem assumia **um** disco e o chamava de `/dev/mmcblk1p2`. No
+aparelho existem três mídias, e o sistema pode estar em qualquer uma:
+
+| Mídia | Alias DT / controladora | Dispositivo | Tamanho |
+| --- | --- | --- | --- |
+| eMMC | `mmc0` / `mmc@fe310000` (sdhci-dwcmshc) | `mmcblk0` | **3776 MiB** |
+| SD1 | `mmc1` / `mmc@fe2b0000` (dwmmc) | `mmcblk1` | o cartão |
+| SD2 | `mmc2` / `mmc@fe000000` (dwmmc) | `mmcblk2` | o cartão |
+
+O que mudou (build novo necessário):
+
+* **`root=PARTUUID=<do build>`** no `extlinux.conf` em vez de `/dev/mmcblk1p2`.
+  **Validado no aparelho** (reboot real): `VFS: Mounted root (ext4 filesystem) on
+  device 179:130` com `root=PARTUUID=40d50178-02`.
+* **U-Boot varre o SD2**: `BOOT_TARGETS "mmc1 mmc0 mmc2 ..."` (o mainline só tinha
+  `mmc1 mmc0`, então sistema no 2º slot nunca iniciava). Ordem escolhida: SD1 → eMMC →
+  SD2.
+* **Imagem 3584 MiB** (era 4096): não cabia no eMMC de 3776 MiB.
+* **`walkmam-extra-storage.service`**: monta os slots que não têm o sistema em
+  `/storage/sdcard<N>` e liga em `/boot/roms/sdcard<N>` (aparece no RetroArch). Detecta
+  cartão inserido depois do boot religando o slot (`unbind`/`bind`) — necessário porque
+  os slots não têm `cd-gpios`. Testado no aparelho: montou, ligou, desmontou ao sumir o
+  dispositivo e remontou após o rescan.
+* **`tools/install-image-to-emmc.sh`**: grava a imagem no eMMC com conferência de
+  tamanho e limpeza da GPT antiga.
+
+> Ressalva honesta: o boot a partir do **eMMC** e do **SD2** não foi testado (exigiria
+> sobrescrever o ROCKNIX de fábrica). O que está provado é o `root=PARTUUID` (que é
+> independente da mídia) e a detecção/montagem dos dois slots.
+
 ### Variante de jogos: o que já foi validado (X55 e X35H)
 
 O primeiro boot da imagem de jogos **não** abria: o RetroArch era morto pelo Weston

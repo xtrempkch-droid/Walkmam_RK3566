@@ -602,3 +602,39 @@ outro commit resolve sem force-push na branch. Para conferir se o build nasceu, 
   esse cuidado; agora a atribuição tem `|| EXIT_ACTION=`.
 - Pendente / próximo: gerar imagem `retroarch-*` e confirmar no aparelho que "Quit"
   desliga; conferir também que `retroarch_exit=stay` deixa o app sair sem desligar.
+
+### 2026-10-28 (3) — Copilot (1 eMMC + 2 slots SD, medido no X35H)
+
+- **Pedido:** suportar 1 eMMC e 2 SD (o sistema pode estar no SD1 ou no eMMC; se estiver
+  no eMMC, sobram os 2 slots). Aparelho conectado (X35H) por rede para testar.
+- **Medido no aparelho** (não inferido): `mmc0`/`mmc@fe310000` (sdhci-dwcmshc) = **eMMC
+  `mmcblk0`, 3776 MiB**, com ROCKNIX de fábrica em GPT; `mmc1`/`mmc@fe2b0000` = **SD1
+  `mmcblk1`** (o sistema); `mmc2`/`mmc@fe000000` = **SD2 `mmcblk2`** (128 GB, vfat);
+  `mmc3`/`mmc@fe2c0000` = SDIO do rádio (não é slot). **Nenhum slot tem `cd-gpios`**
+  (todos `removable=0`).
+- **Achados que quebrariam a imagem nova:** (1) `root=/dev/mmcblk1p2` estava fixo;
+  (2) a imagem tinha **4096 MiB e não cabe no eMMC de 3776** (dd morreria no meio);
+  (3) `BOOT_TARGETS` do U-Boot mainline é `mmc1 mmc0` — **o SD2 nunca era tentado**.
+- Fez: `root=PARTUUID=<do build>` no CI e no `create-image.sh`; `BOOT_TARGETS "mmc1 mmc0
+  mmc2 ..."` (define no header do board, antes do `#include` do `rk3568_common.h`, que
+  respeita o `#ifndef`); imagem padrão **3584 MiB** (`WALKMAN_IMAGE_SIZE_MB`); novo
+  `common/overlay/usr/local/bin/walkmam-extra-storage.sh` + unit (monta os slots sem o
+  sistema em `/storage/sdcard<N>` e liga em `/boot/roms/sdcard<N>`) e
+  `tools/install-image-to-emmc.sh` (confere tamanho, zera GPT, grava).
+- **Hotplug sem `broken-cd`:** a X35H roda o **DTB oficial da ROCKNIX**, então mexer no
+  nosso DTS não chegaria nela. Solução testada no aparelho: religar o slot
+  (`unbind`/`bind` no `dwmmc_rockchip`) re-detecta cartão e partições. O serviço faz
+  isso com cooldown e **nunca** toca o host que tem o root.
+- **Testado no aparelho:** `root=PARTUUID` com **reboot real** (`VFS: Mounted root ... on
+  device 179:130`, sem serviço em `failed`); serviço de armazenamento montou o SD2,
+  criou `/boot/roms/sdcard2`, desmontou ao sumir o dispositivo e **remontou após o
+  rescan**. Bug meu encontrado e corrigido no teste: `_rescan` abortava quando o
+  `unbind` falhava (host já desligado) e nunca religava.
+- **Não testado (honesto):** boot a partir do **eMMC** e do **SD2** — exigiria
+  sobrescrever o ROCKNIX de fábrica, e o usuário pediu para não gravar agora. O que está
+  provado é o `root=PARTUUID` (independente da mídia) e a detecção/montagem dos slots.
+- **Correção de doc:** neste X35H o **USB gadget funciona** (`usb0` em 10.55.0.1, e foi
+  assim que tudo foi medido) — o `failed to enable ep0out` não é de todo X35H.
+- Próximo: gerar imagem e testar (a) boot com sistema no eMMC via
+  `/usr/local/bin/install-image-to-emmc.sh`, (b) boot com o sistema no SD2, (c) inserir
+  o cartão de dados com o aparelho ligado e ver `/boot/roms/sdcard2` aparecer.

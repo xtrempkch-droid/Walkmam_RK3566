@@ -97,6 +97,35 @@ jobs:
         export ARCH=arm64
         export CROSS_COMPILE=aarch64-linux-gnu-
 
+        # O mainline define BOOT_TARGETS como "mmc1 mmc0 nvme scsi usb pxe dhcp spi"
+        # (include/configs/rockchip-common.h). Nas X35S/X35H existe um SEGUNDO slot
+        # SD no mmc2 (mmc@fe000000), que assim nunca era tentado: um sistema
+        # gravado nele nao iniciava. Definir BOOT_TARGETS aqui (antes do include
+        # do rk3568_common.h) acrescenta o mmc2 mantendo a prioridade pedida:
+        #   mmc1 = SD1 (e o slot usado para testar)
+        #   mmc0 = eMMC (sistema "instalado"; vence o 2o slot)
+        #   mmc2 = SD2 (cartao extra; so inicia se os outros nao tiverem sistema)
+        python3 - <<'PATCH_UBOOT'
+        p = 'include/configs/powkiddy-x55-rk3566.h'
+        src = open(p).read()
+        if 'BOOT_TARGETS' in src:
+            print('BOOT_TARGETS ja definido; nada a fazer')
+        else:
+            alvo = '#include <configs/rk3568_common.h>'
+            novo = (
+                '/* Walkmam: inclui o 2o slot SD (mmc2). Sem isto o mainline so\n'
+                ' * varre "mmc1 mmc0" e um sistema no mmc2 nunca inicia.\n'
+                ' */\n'
+                '#define BOOT_TARGETS "mmc1 mmc0 mmc2 nvme scsi usb pxe dhcp spi"\n'
+                '\n' + alvo
+            )
+            assert alvo in src, 'include do rk3568_common.h nao encontrado'
+            open(p, 'w').write(src.replace(alvo, novo, 1))
+            print('BOOT_TARGETS definido com mmc2')
+        PATCH_UBOOT
+
+        grep -n BOOT_TARGETS include/configs/powkiddy-x55-rk3566.h
+
         make powkiddy-x55-rk3566_defconfig
 
         # Versões de blob confirmadas no options da ROCKNIX para RK3566-X55
@@ -683,6 +712,23 @@ jobs:
         echo "--> Shell continua disponível no console serial (ttyS2, autologin do root)."
         sudo chroot rootfs systemctl mask getty@tty1.service
 
+        echo "--> Instalando o servico de armazenamento extra (2o slot SD / cartao"
+        echo "--> que nao tem o sistema). Monta em /storage/sdcard<N> e liga em"
+        echo "--> /boot/roms/sdcard<N>, que o RetroArch ja mostra no navegador."
+        sudo install -D -m 0755 \
+          common/overlay/usr/local/bin/walkmam-extra-storage.sh \
+          rootfs/usr/local/bin/walkmam-extra-storage.sh
+        sudo install -D -m 0644 \
+          common/overlay/etc/systemd/system/walkmam-extra-storage.service \
+          rootfs/etc/systemd/system/walkmam-extra-storage.service
+        sudo chroot rootfs systemctl enable walkmam-extra-storage.service
+
+        echo "--> Instalando o utilitario de gravar a imagem no eMMC (opcional,"
+        echo "--> manual). Confere o tamanho antes de escrever: o eMMC tem 3776 MiB."
+        sudo install -D -m 0755 \
+          tools/install-image-to-emmc.sh \
+          rootfs/usr/local/bin/install-image-to-emmc.sh
+
         echo "--> Instalando o script de diagnóstico (dmesg, USB, input) no cartão SD"
         echo "--> a cada boot — assim dá pra ler no PC sem precisar de serial/rede/solda."
         echo "--> (o script vem de variants/kodi/overlay; não é mais copiado inline aqui)"
@@ -981,7 +1027,11 @@ jobs:
           IMAGE_NAME="rk3566-x55-${VARIANT}-sdcard.img"
         fi
         echo "--> imagem: $IMAGE_NAME (variante ${VARIANT:-kodi})"
-        IMAGE_SIZE_MB=4096
+        # 3584 MiB (3,5 GiB) e o teto: o eMMC destas placas tem 3776 MiB, e uma
+        # imagem maior NAO cabe nele (o dd morreria no meio e deixaria o eMMC com
+        # instalacao corrompida). A raiz usada e ~1,3 GB, entao sobra folga.
+        # Para cartoes grandes, aumente com WALKMAM_IMAGE_SIZE_MB.
+        IMAGE_SIZE_MB=${WALKMAM_IMAGE_SIZE_MB:-3584}
 
         echo "--> Criando arquivo de imagem vazio (${IMAGE_SIZE_MB}MB)..."
         dd if=/dev/zero of=${IMAGE_NAME} bs=1M count=${IMAGE_SIZE_MB} status=progress
@@ -999,6 +1049,17 @@ jobs:
         echo "--> Formatando partições..."
         mkfs.vfat -F 32 -n "BOOT" ${BOOT_DEV}
         mkfs.ext4 -F -L "ROOTFS" ${ROOT_DEV}
+
+        # root= das entradas de boot. NAO usar /dev/mmcblk1p2: a imagem roda em
+        # tres midias diferentes e o nome do dispositivo muda (ver abaixo).
+        # PARTUUID e o mesmo em qualquer midia porque e gravado junto com a
+        # imagem, entao a MESMA imagem boota no eMMC, no SD1 e no SD2.
+        ROOT_UUID=$(blkid -s PARTUUID -o value ${ROOT_DEV})
+        if [ -z "$ROOT_UUID" ]; then
+          echo "!!! nao consegui ler o PARTUUID de ${ROOT_DEV}" >&2
+          exit 1
+        fi
+        echo "--> root=PARTUUID=${ROOT_UUID}"
 
         echo "--> Gravando U-Boot mainline nos setores corretos..."
         # idbloader.img: SPL/TPL -> setor 64  (offset 32KB)
@@ -1174,16 +1235,16 @@ jobs:
         LABEL Walkmam (Powkiddy X55 - ${VARIANT:-kodi})
             KERNEL /Image
             FDT /dtbs/rk3566-powkiddy-x55.dtb
-            APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw walkmam_x55_gamepad=rocknix-v1
+            APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=PARTUUID=${ROOT_UUID} rw walkmam_x55_gamepad=rocknix-v1
         BOOTCFG
 
         # Referência: variante usando o nosso próprio .dtb compilado, caso o
         # oficial da ROCKNIX dê algum problema de incompatibilidade.
-        cat << "BOOTCFG3" > /mnt/boot/extlinux/extlinux.conf.x35s-nosso
+        cat << BOOTCFG3 > /mnt/boot/extlinux/extlinux.conf.x35s-nosso
         LABEL Mainline (X35S - nosso .dtb)
             KERNEL /Image
             FDT /dtbs/rk3566-powkiddy-x35s-nosso.dtb
-            APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw
+            APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=PARTUUID=${ROOT_UUID} rw
         BOOTCFG3
 
         # Mesma imagem serve para X35S/X35H (mesmo DTB): no PC (partição FAT),
@@ -1197,7 +1258,7 @@ jobs:
         LABEL Walkmam (Powkiddy X35S / X35H)
             KERNEL /Image
             FDT /${X35S_DEFAULT}
-            APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw
+            APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=PARTUUID=${ROOT_UUID} rw
         X35SBOOT
 
         if [ -n "$PERIPH_FDT" ]; then
@@ -1205,7 +1266,7 @@ jobs:
         LABEL Walkmam (X35H/X35S - USB peripheral, teste)
             KERNEL /Image
             FDT $PERIPH_FDT
-            APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw
+            APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=PARTUUID=${ROOT_UUID} rw
         PERIPHBOOT
           echo "--> Alternativa de boot gravada: extlinux/extlinux.conf.x35s-peripheral"
         fi
@@ -1215,7 +1276,7 @@ jobs:
         LABEL Walkmam (Powkiddy X55 - USB peripheral, teste)
             KERNEL /Image
             FDT $X55_PERIPH_FDT
-            APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw walkmam_x55_gamepad=rocknix-v1
+            APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=PARTUUID=${ROOT_UUID} rw walkmam_x55_gamepad=rocknix-v1
         X55PERIPH
           echo "--> Alternativa de boot gravada: extlinux/extlinux.conf.x55-peripheral"
         fi

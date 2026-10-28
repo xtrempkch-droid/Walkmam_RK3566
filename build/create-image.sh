@@ -17,7 +17,10 @@ DTB_NAME=$8
 # Opcional: rotação vinda de devices/<device>/device.conf (display_transform).
 # Se vier vazia, o valor é decidido pelo 'case $DEVICE' mais abaixo.
 DISPLAY_TRANSFORM=${9:-}
-IMAGE_SIZE_MB=4096
+# 3584 MiB (3,5 GiB): o eMMC destas placas tem 3776 MiB e uma imagem maior
+# nao cabe nele (o dd morreria no meio e deixaria o eMMC corrompido).
+# A raiz usada e ~1,3 GB. Para cartoes maiores: WALKMAN_IMAGE_SIZE_MB=8192.
+IMAGE_SIZE_MB=${WALKMAN_IMAGE_SIZE_MB:-3584}
 BOOT_MOUNT=
 ROOT_MOUNT=
 LOOP_DEV=
@@ -129,6 +132,16 @@ fi
 
 mkfs.vfat -F 32 -n BOOT "$BOOT_DEV"
 mkfs.ext4 -F -L ROOTFS "$ROOT_DEV"
+
+# root= pelo PARTUUID, nao por /dev/mmcblk1p2: a mesma imagem pode estar no
+# eMMC (mmcblk0), no SD1 (mmcblk1) ou no SD2 (mmcblk2), e o nome muda.
+# O PARTUUID acompanha a imagem, entao o mesmo extlinux.conf serve nas tres.
+ROOT_UUID=$(blkid -s PARTUUID -o value "$ROOT_DEV")
+if [[ -z $ROOT_UUID ]]; then
+    echo "Não foi possível ler o PARTUUID de $ROOT_DEV" >&2
+    exit 1
+fi
+echo "root=PARTUUID=$ROOT_UUID"
 dd if="$UBOOT_DIR/idbloader.img" of="$LOOP_DEV" seek=64 conv=notrunc,fsync
 dd if="$UBOOT_DIR/u-boot.itb" of="$LOOP_DEV" seek=16384 conv=notrunc,fsync
 
@@ -179,29 +192,29 @@ CONF
 X35S_DTB="$KERNEL_DIR/arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dtb"
 if [[ $DEVICE == powkiddy-x35s && $(basename -- "$DTB_FILE") == rocknix-official-x35s.dtb ]]; then
     cp "$DTB_FILE" "$BOOT_MOUNT/dtbs/rk3566-powkiddy-x35s-rocknix.dtb"
-    cat > "$BOOT_MOUNT/extlinux/extlinux.conf.x35s-rocknix" << 'BOOTCFG'
+    cat > "$BOOT_MOUNT/extlinux/extlinux.conf.x35s-rocknix" << BOOTCFG
 LABEL Mainline (X35S - DTB ROCKNIX)
     KERNEL /Image
     FDT /dtbs/rk3566-powkiddy-x35s-rocknix.dtb
-    APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw
+    APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=PARTUUID=$ROOT_UUID rw
 BOOTCFG
 fi
 if [[ $DEVICE == powkiddy-x35s && -f $X35S_DTB ]]; then
     cp "$X35S_DTB" "$BOOT_MOUNT/dtbs/rk3566-powkiddy-x35s-nosso.dtb"
-    cat > "$BOOT_MOUNT/extlinux/extlinux.conf.x35s-nosso" << 'BOOTCFG'
+    cat > "$BOOT_MOUNT/extlinux/extlinux.conf.x35s-nosso" << BOOTCFG
 LABEL Mainline (X35S - nosso .dtb)
     KERNEL /Image
     FDT /dtbs/rk3566-powkiddy-x35s-nosso.dtb
-    APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw
+    APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=PARTUUID=$ROOT_UUID rw
 BOOTCFG
 fi
 
 if [[ -f $BOOT_MOUNT/dtbs/rk3566-powkiddy-x55.dtb ]]; then
-    cat > "$BOOT_MOUNT/extlinux/extlinux.conf.x55" << 'BOOTCFG'
+    cat > "$BOOT_MOUNT/extlinux/extlinux.conf.x55" << BOOTCFG
 LABEL Mainline (Powkiddy X55)
     KERNEL /Image
     FDT /dtbs/rk3566-powkiddy-x55.dtb
-    APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw walkmam_x55_gamepad=rocknix-v1
+    APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=PARTUUID=$ROOT_UUID rw walkmam_x55_gamepad=rocknix-v1
 BOOTCFG
 fi
 
@@ -214,7 +227,7 @@ cat > "$BOOT_MOUNT/extlinux/extlinux.conf" << BOOTCFG
 LABEL Walkmam ($DEVICE - $VARIANT)
     KERNEL /Image
     FDT /dtbs/$DTB_NAME
-    APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=/dev/mmcblk1p2 rw$BOOT_MARKER
+    APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=PARTUUID=$ROOT_UUID rw$BOOT_MARKER
 BOOTCFG
 
 cp -a "$ROOTFS_DIR"/. "$ROOT_MOUNT"/

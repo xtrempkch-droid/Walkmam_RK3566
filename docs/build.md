@@ -132,6 +132,41 @@ Depois baixe em **Releases** (ou em `releases/download/v1.0/...`), confira com
 `sha256sum -c rk3566-x55-mainline-sdcard.img.gz.sha256` e grave com balenaEtcher,
 Rufus (modo DD) ou `gunzip -c imagem.img.gz | sudo dd of=/dev/sdX bs=4M`.
 
+## Instalar no eMMC (as três mídias)
+
+A imagem é a mesma para **eMMC, SD1 e SD2** — quem resolve é o `root=PARTUUID` gravado
+no `extlinux.conf` (não há mais `/dev/mmcblk1p2` fixo), e o U-Boot varre
+`mmc1 → mmc0 → mmc2` (SD1, eMMC, SD2).
+
+| Mídia | Dispositivo | Tamanho medido | Observação |
+| --- | --- | --- | --- |
+| eMMC (`mmc@fe310000`) | `mmcblk0` | **3776 MiB** | é o limite de tamanho da imagem |
+| SD1 (`mmc@fe2b0000`) | `mmcblk1` | o cartão | slot usado para testar |
+| SD2 (`mmc@fe000000`) | `mmcblk2` | o cartão | só inicia se os outros não tiverem sistema |
+
+O padrão de tamanho da imagem é **3584 MiB** justamente para caber no eMMC.
+Para cartões maiores, `WALKMAN_IMAGE_SIZE_MB=8192 build/build.sh ...`.
+
+**Gravar no eMMC a partir do aparelho** (com o sistema rodando do SD):
+
+```sh
+# copie a imagem para a partição FAT (/boot) do cartão, ou baixe por Wi-Fi
+/usr/local/bin/install-image-to-emmc.sh /boot/rk3566-x55-retroarch-sdcard.img.gz
+# ele confere o tamanho, zera a GPT antiga (o ROCKNIX de fábrica usa GPT e a
+# nossa imagem é MBR), escreve e mostra o resultado
+```
+
+Depois: desligar, **remover o cartão SD** e ligar. O U-Boot tenta SD1 primeiro; sem
+cartão, inicia o eMMC.
+
+Cuidados que já custaram erro:
+
+* **Nunca `dd` uma imagem maior que o disco.** Termina em `No space left on device`
+  com instalação truncada (não inicia) e não há aviso depois.
+* **Zere a GPT antes** de escrever uma imagem MBR; senão o kernel vê a GPT de backup no
+  fim do disco e reclama `GPT PMBR size mismatch`.
+* Gravar no eMMC **apaga o ROCKNIX de fábrica** (não há partição de recuperação).
+
 ## Empacotamento local
 
 `build/build.sh <device> <variant>` empacota artefatos já preparados. Por exemplo:

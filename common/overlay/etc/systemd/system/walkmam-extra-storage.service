@@ -1,0 +1,22 @@
+[Unit]
+Description=Monta os slots SD que nao tem o sistema (dados/ROMs)
+Documentation=file:///boot/extra-storage.log
+# Precisa de /boot (partição FAT) montado: e la que ficam o log e o ponto de
+# montagem que o RetroArch usa para achar as ROMs (/boot/roms/sdcard<N>).
+After=local-fs.target
+Wants=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/walkmam-extra-storage.sh
+# O script e um laco (nao termina por natureza). Se ele morrer, reinicia; o
+# RestartSec evita laco rapido. Nao usa Restart=always porque uma saida normal
+# (impossivel no laco, mas por seguranca) nao deve virar loop.
+Restart=on-failure
+RestartSec=10
+# Encerra o laco antes do desligamento, liberando os cartoes para o umount.
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target
