@@ -83,7 +83,7 @@ corrigidos e **confirmados no aparelho**:
 | Analógicos (os dois) | **OK** (teste do usuário) |
 | X35H (mesmo cartão): 640x480, `normal` | **OK** — sessão de 81 s (antes morria em 7,5 s) |
 | Jogo de verdade (carregar ROM) | **não testado** — próximo passo |
-| Sair pelo menu **desliga** o aparelho | **implementado, não testado em hardware** — o menu do RetroArch 1.14 não tem "Desligar" e "Quit" só matava o processo, deixando o aparelho ligado e sem interface no `tty1`. Agora a saída normal (status 0, sessão ≥ 10 s) dispara `systemctl poweroff`; `retroarch_exit=stay` em `/boot/walkmam.conf` volta ao comportamento antigo (útil para depurar por SSH/serial) |
+| Sair pelo menu **desliga** o aparelho | **CONFIRMADO no aparelho (2026-10-28)**: com o launcher novo instalado no X35H, "Quit RetroArch" no menu → tela "Desligando..." → **o aparelho desligou de verdade** (o gadget USB sumiu do PC e a rede caiu, não foi queda de rede). Antes, fechar só matava o processo e deixava o aparelho ligado, sem interface no `tty1`. `retroarch_exit=stay` em `/boot/walkmam.conf` volta ao comportamento antigo |
 
 As duas correções **já estão na imagem #119**. Se for gerar outra no futuro, o caminho
 é `git tag retroarch-vN && git push origin retroarch-vN` (push na `main` gera `kodi`).

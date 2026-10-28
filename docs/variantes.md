@@ -205,6 +205,11 @@ Por isso o `start-retroarch.sh` trata a **saída normal como desligamento**:
 | "Quit RetroArch" no menu (com `quit_press_twice`, dois toques) ou hotkey de sair | aparece "Desligando..." no `tty1`, faz `sync` e `systemctl poweroff --no-block` |
 | crash, ou sessão com status 0 e menos de 10 s | **não** desliga: é falha, tenta o driver `drm`, e o serviço para após 3 tentativas com o motivo na tela |
 
+**Validado no aparelho em 2026-10-28** (X35H): "Quit RetroArch" → tela "Desligando..." →
+o aparelho desligou de verdade (o gadget USB desapareceu do PC, o que descarta queda de
+rede). Os demais casos (crash, sessão curta, `stay`, conf ausente, valor inválido) foram
+testados no próprio aparelho com `retroarch`/`systemctl` falsos.
+
 O `sync` antes de desligar existe porque a partição FAT (ROMs) e o ext4 (saves) podem
 ter escrita pendente — e o RetroArch grava o `retroarch.cfg` no exit
 (`config_save_on_exit = "true"`).

@@ -600,8 +600,13 @@ outro commit resolve sem force-push na branch. Para conferir se o build nasceu, 
 - **Armadilha encontrada no teste:** `EXIT_ACTION=$(walkmam_read_conf_key ...)` com
   `set -eu` mata o launcher se o helper retornar != 0 — o padrão do projeto não tinha
   esse cuidado; agora a atribuição tem `|| EXIT_ACTION=`.
-- Pendente / próximo: gerar imagem `retroarch-*` e confirmar no aparelho que "Quit"
-  desliga; conferir também que `retroarch_exit=stay` deixa o app sair sem desligar.
+- **CONFIRMADO NO APARELHO (2026-10-28, X35H):** com o launcher novo instalado na
+  imagem em uso, "Quit RetroArch" no menu mostrou "Desligando..." e **o aparelho
+  desligou de verdade** — o gadget USB sumiu do PC (o que descarta queda de rede) e a
+  interface de rede desapareceu. Os outros casos (`stay`, conf ausente, valor inválido,
+  crash, sessão curta) foram testados **no próprio aparelho** com `retroarch`/`systemctl`
+  falsos: só a saída normal de sessão longa desliga.
+- Pendente / próximo: nada neste item. A tag `retroarch-v0.10` gera a imagem com isso.
 
 ### 2026-10-28 (3) — Copilot (1 eMMC + 2 slots SD, medido no X35H)
 
