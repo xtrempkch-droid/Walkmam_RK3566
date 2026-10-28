@@ -6,7 +6,10 @@ on:
     # Tag "retroarch-*" constrói a variante de jogos. Serve para gerar a imagem
     # sem depender do botão no navegador (e para marcar uma versão):
     #   git tag retroarch-v1 && git push origin retroarch-v1
-    tags: [ "retroarch-*" ]
+    # Tag "v*" constrói a variante padrão (kodi) e publica um Release com o nome
+    # da tag. Qualquer tag que também corresponda a "v*" vira release; as tags
+    # "retroarch-*" também (ver os passos de publicação no fim do job).
+    tags: [ "v*", "retroarch-*" ]
   workflow_dispatch:
     inputs:
       variant:
@@ -30,6 +33,11 @@ env:
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
+
+# Necessário para publicar a imagem no GitHub Releases. O restante do workflow
+# só lê o repositório e baixa fontes externas.
+permissions:
+  contents: write
 
 jobs:
   build-os:
@@ -1230,3 +1238,82 @@ jobs:
         # testar) e retroarch ganha o seu, para não confundir as duas imagens.
         name: ${{ env.VARIANT == 'kodi' && 'rk3566-x55-mainline-sdcard-image' || format('rk3566-x55-{0}-sdcard-image', env.VARIANT) }}
         path: output/*.img.gz
+
+    - name: Gerar checksum SHA256 da imagem
+      run: |
+        cd output
+        # Checksum por arquivo (e não um SHA256SUMS único) para o release rolante
+        # poder receber as duas variantes sem um sobrescrever o checksum do outro.
+        for f in *.img.gz; do
+          sha256sum "$f" > "$f.sha256"
+        done
+        ls -la
+        cat ./*.sha256
+
+    # ---------------------------------------------------------------------
+    # Publicação no GitHub Releases
+    #
+    # O artefato do Actions expira (90 dias) e exige login para baixar. O
+    # release publica o MESMO arquivo .img.gz da imagem de cartão SD — não é
+    # um ISO9660 (o U-Boot é gravado nos setores 64 e 16384 do disco, então
+    # um ISO comum não inicializa o aparelho).
+    #
+    #   * tag v* ou retroarch-* -> release com o nome da tag (versão);
+    #   * push na main          -> release rolante "latest" (pre-release),
+    #                              com os assets sobrescritos a cada build.
+    # ---------------------------------------------------------------------
+    - name: Publicar release da tag
+      if: startsWith(github.ref, 'refs/tags/')
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        TAG="${GITHUB_REF#refs/tags/}"
+        NOTES="$(mktemp)"
+        cat > "$NOTES" << NOTES
+        Imagem de cartão SD para RK3566 — variante **${VARIANT}**.
+
+        - Commit: ${GITHUB_SHA}
+        - Build: [run ${GITHUB_RUN_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})
+
+        **Não é um ISO9660.** Grave o arquivo .img.gz direto no cartão SD com
+        balenaEtcher, Rufus (modo DD) ou gunzip -c imagem.img.gz | sudo dd of=/dev/sdX bs=4M.
+        O U-Boot é gravado nos setores 64 e 16384 do disco; um ISO comum não
+        inicializa o aparelho.
+
+        Confira a integridade com: sha256sum -c imagem.img.gz.sha256
+        NOTES
+        if gh release view "$TAG" >/dev/null 2>&1; then
+          gh release edit "$TAG" --notes-file "$NOTES"
+        else
+          gh release create "$TAG" --title "$TAG" --notes-file "$NOTES"
+        fi
+        gh release upload "$TAG" output/*.img.gz output/*.sha256 --clobber
+
+    - name: Publicar release rolante latest (main)
+      if: github.ref == 'refs/heads/main'
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        NOTES="$(mktemp)"
+        cat > "$NOTES" << NOTES
+        Imagem mais recente da branch **main** — variante **${VARIANT}**.
+
+        - Commit: ${GITHUB_SHA}
+        - Build: [run ${GITHUB_RUN_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})
+
+        **Não é um ISO9660.** Grave o arquivo .img.gz direto no cartão SD com
+        balenaEtcher, Rufus (modo DD) ou gunzip -c imagem.img.gz | sudo dd of=/dev/sdX bs=4M.
+        O U-Boot é gravado nos setores 64 e 16384 do disco; um ISO comum não
+        inicializa o aparelho.
+
+        Confira a integridade com: sha256sum -c imagem.img.gz.sha256
+        NOTES
+        gh release view latest >/dev/null 2>&1 || gh release create latest \
+          --target "$GITHUB_SHA" \
+          --title "Latest (main)" \
+          --prerelease \
+          --notes-file "$NOTES"
+        gh release upload latest output/*.img.gz output/*.sha256 --clobber
+        gh release edit latest --notes-file "$NOTES"

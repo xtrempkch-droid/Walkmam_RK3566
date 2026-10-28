@@ -226,6 +226,22 @@ Detalhes em [docs/variantes.md](docs/variantes.md). Pontos que custam tempo se e
 Run workflow (ou um push no `main`). Gera o artifact
 `rk3566-x55-mainline-sdcard-image`.
 
+**Releases:** o fim do job publica a imagem no GitHub Releases (o artifact expira em 90
+dias e exige login; o release não). Regras:
+
+| Ref | Release |
+| --- | --- |
+| tag `v*` | release com o nome da tag (variante `kodi`) |
+| tag `retroarch-*` | release com o nome da tag (variante `retroarch`) |
+| push na `main` | release rolante **`latest`** (`--prerelease`), assets sobrescritos |
+
+Os passos usam `gh release ... --clobber` e o token do próprio workflow, por isso o job
+declara `permissions: contents: write`. O checksum é **por arquivo**
+(`<imagem>.img.gz.sha256`), não um `SHA256SUMS` único, para as duas variantes conviverem
+no `latest` sem uma apagar o checksum da outra. A imagem continua sendo `.img.gz` de
+cartão SD — **não** é ISO9660 (o U-Boot fica nos setores 64 e 16384). Um release só é
+criado se o build chegar ao fim; tag engolida pela marca de skip-ci não gera release.
+
 **Local (U-Boot + kernel + DTB, sem root):** possível, com toolchain extra. O CI é o
 caminho oficial; o rootfs Debian e a montagem da imagem exigem `sudo`.
 
@@ -545,3 +561,20 @@ outro commit resolve sem force-push na branch. Para conferir se o build nasceu, 
 - **Estado:** #119 (retroarch, 536 MB) e #120 (kodi) verdes. Falta: testar um jogo de
   verdade; no X35H, o teste do pendrive (decide se a porta é host) e o rádio (precisa
   medir `pwrseq`/regulador no aparelho).
+
+### 2026-10-28 — Copilot (publicação das imagens no GitHub Releases)
+
+- Fez: o job passou a **publicar a imagem no Releases**, porque o artifact do Actions
+  expira e exige login. Gatilhos: tag `v*` (nova) e tag `retroarch-*` criam um release
+  com o nome da tag; push na `main` (ou `workflow_dispatch` na `main`) atualiza a release
+  rolante **`latest`**, marcada *pre-release*, com `gh release upload --clobber`.
+  Adicionado `permissions: contents: write`; checksum **por arquivo**
+  (`<imagem>.img.gz.sha256`) para as duas variantes conviverem no `latest`.
+- **Formato:** continua sendo `.img.gz` de cartão SD; **não** foi gerado ISO9660 — o
+  U-Boot é gravado nos setores 64/16384 do disco, então um ISO comum não inicializa o
+  aparelho. As notas do release dizem isso e explicam como gravar.
+- Validado **sem gastar build**: YAML parseado, os `run:` extraídos e verificados com
+  `bash -n`, e os dois passos simulados com um `gh` falso (release inexistente →
+  `create`; release existente → `edit`/`upload --clobber`), além do heredoc das notas.
+- Pendente / próximo: confirmar no primeiro run verde que o release nasce no servidor
+  (o teste local usou `gh` simulado) e que `latest` recebe o asset da variante do push.

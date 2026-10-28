@@ -27,8 +27,10 @@ está pronto, o que ainda é **hipótese** e exatamente o que testar e devolver.
 | `kodi` (multimídia) | **#120** | `rk3566-x55-mainline-sdcard-image` | ~356 MB | validada em hardware; #120 acrescenta o `dmesg` de USB no `usb-watch` |
 | `retroarch` (jogos) | **#119** (tag `retroarch-v0.9`) | `rk3566-x55-retroarch-sdcard-image` | 536 MB | **use esta para jogos**: tela, rotação, áudio e controles validados no X55 e no X35H |
 
-Pegue em **Actions → run #120 / #119 → Artifacts**. São duas imagens completas: grave em
-cartões separados (não dá para trocar de variante pelo cartão).
+Pegue em **Actions → run #120 / #119 → Artifacts** ou em **Releases** (cada push na
+`main` atualiza a release rolante `latest`; tags `v*`/`retroarch-*` criam um release da
+versão com a imagem + `.sha256`). São duas imagens completas: grave em cartões separados
+(não dá para trocar de variante pelo cartão).
 
 O que **entrou** em #119 (e não estava em nenhuma imagem antes):
 `video_fullscreen_x/y` com o tamanho já girado, perfil de controle
@@ -169,6 +171,8 @@ do `dr_mode = "peripheral"` forçado nos DTBs da X35S (PR #6).
 1. No GitHub: **Actions → "Build Mainline RK3566 (Powkiddy X55) OS"** → escolha o run
    **verde mais recente** → baixe o artifact. Para gerar de novo, use *Run workflow*.
    (Um push no `main` também dispara o build automaticamente.)
+   Alternativa que não expira: **Releases** → `latest` (push na `main`) ou o release da
+   tag `v*`/`retroarch-*`, com a imagem `.img.gz` e o `.sha256` ao lado.
 2. Baixe o artifact **`rk3566-x55-mainline-sdcard-image`** (contém
    `rk3566-x55-mainline-sdcard.img.gz`).
 3. Descompacte o `.gz`, grave o `.img` no cartão SD e insira no aparelho.

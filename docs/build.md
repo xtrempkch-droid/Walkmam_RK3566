@@ -102,6 +102,36 @@ hardware (VBUS/ID da porta) ou o PHY. O script do diagnóstico vem de
 `variants/kodi/overlay/usr/local/bin/dump-diagnostico.sh` (o CI o instala com
 `install`, sem cópia inline no `build.yml`).
 
+## Publicação no GitHub Releases
+
+O workflow publica a imagem **no próprio Release**, porque o artifact do Actions expira
+(90 dias) e exige login para baixar. O arquivo é exatamente o mesmo
+`rk3566-x55-*-sdcard.img.gz` — **não é um ISO9660**: o U-Boot é gravado nos setores 64
+e 16384 do disco, então um ISO comum não inicializa o aparelho.
+
+| Gatilho | O que acontece |
+| --- | --- |
+| tag `v*` (ex.: `v1.0`) | release com o nome da tag, variante `kodi`, asset da imagem + `.sha256` |
+| tag `retroarch-*` (ex.: `retroarch-v1.0`) | release com o nome da tag, variante `retroarch` |
+| push na `main` | release rolante **`latest`** (marcado *pre-release*), assets sobrescritos a cada build |
+
+Se um release da tag já existir, as notas e os assets são atualizados em vez de falhar
+(`gh release upload --clobber`), então recriar uma tag é seguro. O checksum é publicado
+por arquivo (`<imagem>.img.gz.sha256`), para que as duas variantes convivam no `latest`
+sem uma sobrescrever o checksum da outra. O job precisa de `permissions: contents: write`
+para usar a API de releases.
+
+Para publicar uma versão:
+
+```sh
+git tag v1.0
+git push origin v1.0
+```
+
+Depois baixe em **Releases** (ou em `releases/download/v1.0/...`), confira com
+`sha256sum -c rk3566-x55-mainline-sdcard.img.gz.sha256` e grave com balenaEtcher,
+Rufus (modo DD) ou `gunzip -c imagem.img.gz | sudo dd of=/dev/sdX bs=4M`.
+
 ## Empacotamento local
 
 `build/build.sh <device> <variant>` empacota artefatos já preparados. Por exemplo:
