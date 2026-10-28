@@ -34,7 +34,22 @@ SIZE_H=${SIZE##* }
 
 # Sessão Wayland mais curta que isto não é "o usuário saiu do menu": é morte
 # precoce (protocolo, driver, ...). Serve para não declarar sucesso com tela preta.
-MIN_SEGUNDOS=10
+MIN_SEGUNDOS=${WALKMAM_MIN_SEGUNDOS:-10}
+
+# O que fazer quando o usuário fecha o RetroArch pelo menu.
+#
+# O RetroArch 1.14 NÃO tem item "Desligar" no menu (só "Restart RetroArch" e
+# "Quit RetroArch"), e "Quit" apenas encerra o processo: o aparelho continuaria
+# ligado, sem interface no tty1 (o getty é mascarado) e sem como desligar sem
+# SSH/serial. Por isso a saída normal DESLIGA o aparelho, como nas imagens
+# ROCKNIX. Ajustável em /boot/walkmam.conf (editável no PC):
+#   retroarch_exit=poweroff (padrão) -> systemctl poweroff
+#   retroarch_exit=stay              -> só sai (depurar por SSH/serial)
+EXIT_ACTION=$(walkmam_read_conf_key retroarch_exit) || EXIT_ACTION=
+case "$EXIT_ACTION" in
+    stay|none|shell) ;;
+    *)               EXIT_ACTION=poweroff ;;
+esac
 
 _log_dir=$(dirname "$RETROARCH_LOG")
 if [ ! -d "$_log_dir" ] || [ ! -w "$_log_dir" ]; then
@@ -136,6 +151,23 @@ fi
 if [ "$ok" -eq 0 ]; then
     walkmam_say_tty "RETROARCH NAO ABRIU (veja /boot/retroarch-start.log)"
     exit 1
+fi
+
+# Saída normal do usuário: desliga o aparelho (o RetroArch não tem opção de
+# shutdown no menu). "sync" antes de desligar porque a partição FAT (ROMs) e o
+# ext4 (saves) podem ter escrita pendente — o RetroArch salva o retroarch.cfg no
+# exit e o save do jogo pode ter acabado de ser gravado.
+# --no-block: o systemd vai parar este serviço para desligar, então não faz
+# sentido esperar (e sim morrer no meio do desligamento).
+if [ "$EXIT_ACTION" = poweroff ]; then
+    echo "Saida normal do usuario (status 0 apos ${_durou:-?}s): desligando o aparelho" >> "$RETROARCH_LOG"
+    walkmam_say_tty "Desligando..."
+    sync
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl poweroff --no-block >> "$RETROARCH_LOG" 2>&1 || true
+    else
+        poweroff >> "$RETROARCH_LOG" 2>&1 || true
+    fi
 fi
 
 exit 0

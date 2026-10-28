@@ -1125,6 +1125,12 @@ jobs:
         # Assim a MESMA imagem serve nos três aparelhos sem editar nada à mão.
         # Um valor explícito sempre vence o "auto".
         display_transform=auto
+
+        # retroarch_exit: só na variante retroarch. O que fazer quando o
+        # RetroArch e fechado pelo menu ("Quit RetroArch" - o 1.14 nao tem item
+        # de desligar). "poweroff" desliga o aparelho; "stay" apenas sai do app,
+        # util para depurar por SSH/serial.
+        retroarch_exit=poweroff
         WALKMAMCONF
 
         # ROMs na partição FAT: é o ÚNICO lugar que se lê de um PC sem rede.

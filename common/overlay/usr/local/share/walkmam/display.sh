@@ -42,14 +42,19 @@ walkmam_transform_from_model() {
     esac
 }
 
+# Lê uma chave "chave=valor" de walkmam.conf (partição FAT, editável no PC).
+# Remove o CR que o FAT deixa no fim da linha. Chave ausente = saída vazia
+# (quem chama decide o padrão). $1 = nome da chave.
+walkmam_read_conf_key() {
+    [ -r "$WALKMAM_CONF" ] || return 0
+    sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//p" "$WALKMAM_CONF" \
+        | tail -n 1 | tr -d '\r[:space:]'
+}
+
 # Rotação efetiva: "display_transform=" de walkmam.conf (partição FAT, editável
 # no PC). "auto", vazio ou valor inválido caem no padrão do modelo.
 walkmam_read_transform() {
-    _valor=
-    if [ -r "$WALKMAM_CONF" ]; then
-        _valor=$(sed -n 's/^[[:space:]]*display_transform[[:space:]]*=[[:space:]]*//p' "$WALKMAM_CONF" \
-            | tail -n 1 | tr -d '\r[:space:]')
-    fi
+    _valor=$(walkmam_read_conf_key display_transform)
     case "$_valor" in
         normal|rotate-90|rotate-180|rotate-270|\
         flipped|flipped-rotate-90|flipped-rotate-180|flipped-rotate-270)

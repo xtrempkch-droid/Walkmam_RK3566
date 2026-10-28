@@ -578,3 +578,27 @@ outro commit resolve sem force-push na branch. Para conferir se o build nasceu, 
   `create`; release existente → `edit`/`upload --clobber`), além do heredoc das notas.
 - Pendente / próximo: confirmar no primeiro run verde que o release nasce no servidor
   (o teste local usou `gh` simulado) e que `latest` recebe o asset da variante do push.
+
+### 2026-10-28 (2) — Copilot (no RetroArch, sair do app desliga o aparelho)
+
+- **Pedido:** o menu do RetroArch só tem "Quit RetroArch", e fechar apenas o app deixava
+  o aparelho ligado — sem interface (o `tty1` é do app e o `getty@tty1` é mascarado) e
+  sem como desligar sem SSH/serial.
+- **Não existe item "Desligar"** no RetroArch 1.14 (o menu é `Restart RetroArch` +
+  `Quit RetroArch`); criar um exigiria patch no fonte do RetroArch. Solução: o
+  **launcher** trata saída normal como desligamento.
+- Fez: `start-retroarch.sh` lê `retroarch_exit` de `/boot/walkmam.conf` (padrão
+  `poweroff`; `stay` = só sai) e, ao terminar com status 0 e sessão ≥ 10 s, mostra
+  "Desligando..." no tty1, faz `sync` e `systemctl poweroff --no-block`. Crash ou sessão
+  curta **não** desligam (continua sendo falha, com retry e motivo na tela). Criado
+  `walkmam_read_conf_key` em `display.sh` (`walkmam_read_transform` passou a usá-lo) e a
+  chave foi documentada no `walkmam.conf` gerado pelo CI e pelo `build/create-image.sh`.
+  `quit_press_twice` continua ligado, para não desligar com um toque acidental.
+- Testado **sem hardware**: launcher rodado com `retroarch`/`systemctl` falsos — 6 casos
+  (conf ausente, `stay`, `poweroff`, valor inválido, crash, sessão curta) e o parsing
+  real do `display.sh` com `walkmam.conf` em CRLF (FAT). Falta confirmar no aparelho.
+- **Armadilha encontrada no teste:** `EXIT_ACTION=$(walkmam_read_conf_key ...)` com
+  `set -eu` mata o launcher se o helper retornar != 0 — o padrão do projeto não tinha
+  esse cuidado; agora a atribuição tem `|| EXIT_ACTION=`.
+- Pendente / próximo: gerar imagem `retroarch-*` e confirmar no aparelho que "Quit"
+  desliga; conferir também que `retroarch_exit=stay` deixa o app sair sem desligar.

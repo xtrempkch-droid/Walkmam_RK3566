@@ -171,6 +171,9 @@ cat > "$BOOT_MOUNT/walkmam.conf" << CONF
 #                    flipped-rotate-270
 # "auto" escolhe pelo modelo (X55 -> rotate-90, X35S/X35H -> normal).
 display_transform=$DISPLAY_TRANSFORM
+# retroarch_exit: o que fazer quando o RetroArch é fechado pelo menu (o 1.14
+# não tem item de desligar). poweroff = desliga o aparelho; stay = só sai.
+retroarch_exit=poweroff
 CONF
 
 X35S_DTB="$KERNEL_DIR/arch/arm64/boot/dts/rockchip/rk3566-powkiddy-x35s.dtb"

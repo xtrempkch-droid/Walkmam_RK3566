@@ -168,6 +168,35 @@ A lógica de rotação e o start do Weston ficam em
 launcher do Kodi ainda tem a cópia inline dele (foi validado em hardware assim, e não
 mexemos nele sem necessidade); ao tocar nele, migre para o helper.
 
+## Fechar o app: no RetroArch, sair **desliga**
+
+O menu do RetroArch 1.14 só oferece "Restart RetroArch" e "Quit RetroArch" — **não
+existe item "Desligar"** (nem jeito de criar um sem mexer no fonte do RetroArch). E
+"Quit" só encerra o processo: o aparelho continuaria ligado, com a tela sem interface,
+porque o `tty1` pertence ao app e o `getty@tty1` é mascarado. Sem SSH/serial, não havia
+como desligar.
+
+Por isso o `start-retroarch.sh` trata a **saída normal como desligamento**:
+
+| Situação | O que acontece |
+| --- | --- |
+| "Quit RetroArch" no menu (com `quit_press_twice`, dois toques) ou hotkey de sair | aparece "Desligando..." no `tty1`, faz `sync` e `systemctl poweroff --no-block` |
+| crash, ou sessão com status 0 e menos de 10 s | **não** desliga: é falha, tenta o driver `drm`, e o serviço para após 3 tentativas com o motivo na tela |
+
+O `sync` antes de desligar existe porque a partição FAT (ROMs) e o ext4 (saves) podem
+ter escrita pendente — e o RetroArch grava o `retroarch.cfg` no exit
+(`config_save_on_exit = "true"`).
+
+Ligado/desligado por `retroarch_exit` em `/boot/walkmam.conf` (partição FAT, editável no
+PC, sem regravar o cartão):
+
+```ini
+retroarch_exit=poweroff   # padrão: fechar o RetroArch desliga o aparelho
+retroarch_exit=stay       # só sai do app (depurar por SSH/serial)
+```
+
+O Kodi **não** precisa disso: ele tem menu de energia próprio ("Desligar").
+
 ## Trocar de variante sem regravar
 
 Não dá para trocar o "app da imagem" pelo cartão, porque os pacotes diferem. O que dá
@@ -190,9 +219,13 @@ experiências, grave duas imagens em dois cartões (ou use dois cartões por apa
 | `xdg_surface geometry (720 x 1280) is larger than the configured fullscreen state (1280 x 720)`, e o RetroArch "termina com status 0" | a saída foi girada pelo Weston, mas o app pediu a superfície no modo **nativo** do painel | o launcher passa `video_fullscreen_x/y` com o tamanho **já girado** (`walkmam_rotated_size`); nunca deixe em `"0"` |
 | `[Autoconf]: retrogame_joypad (…) not configured` | o pacote Debian do RetroArch **não traz** perfil de joypad | perfil em `/root/.config/retroarch/autoconfig/udev/Rocknix_Gamepad.cfg` (instalado pelo build) |
 | `RetroArch (wayland) terminou com status 0 apos 3s` seguido de "tentando video_driver=drm" | morte precoce, não saída do usuário | é o comportamento novo e desejado: abaixo de 10 s não conta como sucesso |
+| "Quit RetroArch" fecha o app e **o aparelho continua ligado** (tela sem interface, só serial responde) | o menu do RetroArch não tem "Desligar"; o `tty1` é do app e o `getty` está mascarado | o launcher desliga na saída normal; log grava `Saida normal do usuario (...) : desligando o aparelho` |
 
 Para inspecionar o RetroArch **sem tomar a tela** (útil por SSH, com o serviço
-rodando), use os drivers nulos — é assim que o autoconfig foi diagnosticado:
+rodando), use os drivers nulos — é assim que o autoconfig foi diagnosticado. Nesse tipo
+de depuração, use `retroarch_exit=stay` em `/boot/walkmam.conf` (ou
+`WALKMAM_CONF=<arquivo com stay>`) para o aparelho **não** desligar quando o teste
+terminar:
 
 ```sh
 cat > /tmp/probe.cfg <<'CFG'
