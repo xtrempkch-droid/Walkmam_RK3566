@@ -42,23 +42,29 @@ compara as **160 strings** e hoje dá `OK`.
 ## Modelos de tela existentes (o R35S/R36S não tem um painel só)
 
 O mesmo aparelho sai de fábrica com telas diferentes, e cada uma precisa da sua
-sequência de inicialização. Os quatro primeiros nomes são os overlays oficiais da
-ROCKNIX/REG Linux:
+sequência de inicialização. As assinaturas abaixo foram **medidas nos arquivos do
+aparelho** (2026-10-30, partição de boot da ROCKNIX):
 
-| Variante | Observação |
-| --- | --- |
-| `r36s-panel1` | painel inicial (faixa de 2024) |
-| `r36s-panel2` | — |
-| `r36s-panel3` | — |
-| `r36s-panel4` | **o nosso `mipis-panel4.dts`** (a partir de abril/2024) |
-| `r36s_clone` | clones (2025) |
-| `rg351mp-v2`, `rg351v-v2` | telas trocadas de RG351 — reaproveitadas |
-| `cb408` | idem |
+| Overlay | tamanho | clock | modos | passos de init | observação |
+| --- | --- | --- | --- | --- | --- |
+| `mipi-panel0` | 153x85 mm | 30 MHz | 12 | 24 | **outro painel** (lista de testes) |
+| `mipi-panel1` | 52x70 mm | 29 MHz | 3 iguais | 25 | init curta |
+| `mipi-panel2` | 52x70 mm | 29 MHz | 3 iguais | 187 | init longa |
+| `mipi-panel3` | 52x70 mm | 29 MHz | 3 iguais | 188 | init longa |
+| **`mipi-panel4`** | 52x70 mm | 29 MHz | 3 (60/50/75) | **155** | **a da nossa unidade** |
 
-Não existe detecção automática de painel em nenhum firmware conhecido: a
-documentação da REG Linux diz literalmente "descubra qual painel você tem (ou vá
-trocando as opções até funcionar)". Ver `docs/r35s-rk3326.md` para o mecanismo que
-este projeto adota.
+O `panel4` é o mesmo painel do `mipis-panel4.dts` desta pasta: o DTB de fabricante
+`rk3326-r35s-linux.dtb` traz essa sequência embutida (773 bytes / 155 passos) com
+`elida,kd35t133`. O `extlinux.conf` ativo no cartão confirma:
+`FDT /rk3326-gameconsole-r36s.dtb` + `FDTOVERLAYS /overlays/mipi-panel4.dtbo`.
+
+Os nomes usados no release `panel_overlays` da ROCKNIX/REG Linux são
+`r36s-panel1..4` (mais `r36s_clone`, `rg351mp-v2`, `rg351v-v2`).
+
+Não existe detecção automática de painel: o U-Boot da ROCKNIX lê um **ADC** para
+descobrir o *modelo da placa* (`uboot.hwid_adc`), não o painel. Se o ADC falhar, o
+`README.txt` da própria ROCKNIX manda editar o `extlinux.conf` na mão — foi assim que
+o `panel4` ficou fixado. Ver `docs/r35s-rk3326.md` §9.
 
 ## Como (re)gerar um overlay
 
@@ -72,19 +78,22 @@ python3 tools/panel_overlay_from_dts.py \
 python3 tools/panel_overlay_from_dts.py \
     devices/game-console-r35s/dts/mipis-panel4.dts --check-arquivo mipi-panel.dtbo.r36s-panel4
 
-# 3. compilar: dtbo isolado (overlay em runtime) ...
-dtc -@ -O dtb -o mipi-panel.dtbo panel-overlay/mipi-panel.dts
+# 3. compilar o overlay: o U-Boot que o projeto fixa aceita FDTOVERLAYS
+#    (include/pxe_utils.h tem o campo), então o caminho é o mesmo da ROCKNIX:
+#    publicar o .dtbo e apontar em extlinux.conf
+dtc -@ -O dtb -o overlays/mipi-panel.dtbo panel-overlay/mipi-panel.dts
 
-# ... ou aplicar no DTB base, que é o que o build deve fazer (ver docs)
+# ... ou aplicar no DTB base, gerando um DTB por variante (alternativa)
 fdtoverlay -i dtbs/rk3326-<base>.dtb -o dtbs/<base>-panel4.dtb mipi-panel.dtbo
 ```
 
 `fdtoverlay` e `dtc` vêm do pacote `device-tree-compiler` (o CI já instala).
 
-## Ainda falta (nada disso foi testado no aparelho)
+## Estado (2026-10-30)
 
-- Confirmar no hardware qual variante de painel esta unidade tem.
-- Descobrir o **DTB base** correto (botões/ADC/áudio) — hoje a única pista é que a
-  KNULLI usa o DTB da RG351MP para o R36S; ver `docs/r35s-rk3326.md`.
-- Nenhum DTS próprio do R35S foi escrito ainda: sem medir os botões, qualquer
-  `gpio-keys` seria chute.
+- **Painel desta unidade: `panel4`** — confirmado pelo `extlinux.conf` ativo
+  (`FDTOVERLAYS /overlays/mipi-panel4.dtbo`) e pelo `.dtbo` do cartão, que bate
+  100% com o que `tools/panel_overlay_from_dts.py` gera.
+- **DTB base: `rk3326-gameconsole-r36s.dtb`** (painel `st7703` + joypad
+  `rocknix-singleadc-joypad`) — é o que a ROCKNIX usa neste aparelho.
+- Falta o **loader U-Boot/DDR** para o nosso kernel: ver `docs/r35s-rk3326.md` §9.7.

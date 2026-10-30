@@ -721,3 +721,39 @@ outro commit resolve sem force-push na branch. Para conferir se o build nasceu, 
 - **Não testado:** nada desta placa em hardware; `dtc`/`fdtoverlay` não rodaram aqui
   (não há `dtc` nesta máquina) — o overlay foi validado como **texto** contra o binário
   oficial, não compilado.
+
+### 2026-10-30 (2) — DeepSeek (R36S: DTB, extlinux e overlays do aparelho conferidos)
+
+- **Push do commit anterior:** feito com OAuth device flow (código de 8 dígitos,
+  sem PAT). `1d0044d..9f87240` na `main`; run **#135** disparado. Autor do commit
+  ficou `DeepSeek (agente) <253578272+xtrempkch-droid@users.noreply.github.com>`.
+- **O usuário forneceu a partição de boot real** da imagem que funciona (ROCKNIX):
+  5 `extlinux.conf`, 17 `.dtb` e 5 `mipi-panel*.dtbo`. Achados (todos medidos nos
+  arquivos, não inferidos — tabelas em `docs/r35s-rk3326.md` §9):
+  1. O `extlinux.conf` **ativo** é `FDT /rk3326-gameconsole-r36s.dtb` +
+     `FDTOVERLAYS /overlays/mipi-panel4.dtbo` → **a unidade é panel4**.
+  2. O `mipi-panel4.dtbo` do cartão deu `--check-arquivo`: **160 strings idênticas**
+     ao que `tools/panel_overlay_from_dts.py` gera do `mipis-panel4.dts`.
+  3. O `rk3326-r35s-linux.dtb` (vendor "fix by lxc") tem a **mesma** sequência
+     embutida (773 bytes / 155 passos) com `elida,kd35t133` — é a origem do nosso
+     `mipis-panel4.dts`.
+  4. **`FDTOVERLAYS` existe no U-Boot que o projeto fixa** (`include/pxe_utils.h`,
+     commit `0a55b09`, campo `char *fdtoverlays`). Isso derruba o plano antigo de
+     "um DTB por variante de painel": dá para publicar `dtbs/` + `overlays/` e
+     apontar no `extlinux.conf`, igual à ROCKNIX.
+  5. Hardware do R36S lido do DTB: painel `gameconsole,r36s-panel` (`sitronix,st7703`,
+     reset gpio3 p.16, LDO_REG8); joypad **`rocknix-singleadc-joypad`** (17 botões +
+     2 analógicos por **multiplexador de ADC**, `saradc` canal 1); 2 slots SD
+     (`mmc@ff370000`/`mmc@ff380000`) e **eMMC desligado**; USB otg com
+     `role-switch-default-mode = "host"`; áudio `Speaker -> SPKO` (**≠ X55**, que usa
+     HP); backlight PWM1 25 µs; bateria 3380 mAh; **sem Wi-Fi/BT**.
+  6. O "escaneia e acha" é `uboot.hwid_adc` (ADC no U-Boot escolhe o **modelo** de
+     placa), não o painel. `rocknix,device_switch` traz `this = "r36s"`.
+- **Arquivos alterados:** `docs/r35s-rk3326.md` (§9 novo, fontes renumeradas),
+  `devices/game-console-r35s/{device.conf,dts/Readme.md}` (painel4 + DTB base
+  confirmados; `image_dtb` continua vazio de propósito).
+- **Pendente / próximo:** falta **só o loader** (U-Boot + blob de DDR) para o nosso
+  kernel — o caminho é o nome/versão da imagem ROCKNIX que funciona no aparelho, para
+  eu baixar e extrair `idbloader.img`/`u-boot.itb` + `boot.scr` (ver §9.7). Depois:
+  job RK3326 no CI (checklist §5) e o `rocknix-singleadc-joypad.c` + entrada do painel
+  no `panel-sitronix-st7703.c` (ambos vêm da ROCKNIX, o CI já clona).
