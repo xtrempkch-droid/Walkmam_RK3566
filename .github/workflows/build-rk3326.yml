@@ -230,20 +230,48 @@ jobs:
         export ARCH=arm64
         export CROSS_COMPILE=aarch64-linux-gnu-
         make defconfig
+        # Nomes conferidos no Kconfig do Linux v6.12 (não chutar de novo):
+        #  - ARCH_PX30 NÃO existe no arm64; quem cobre PX30/RK3326 é ARCH_ROCKCHIP;
+        #  - DRM_ROCKCHIP depende de DRM E de ROCKCHIP_IOMMU: com DRM=m o Kconfig
+        #    rebaixa DRM_ROCKCHIP para m mesmo pedindo =y (foi o que derrubou o
+        #    run #1). Por isso ligamos DRM=y aqui;
+        #  - ROCKCHIP_IOMMU já vem =y no defconfig do arm64.
         ./scripts/config --file .config \
-          -e ARCH_PX30 -e DRM_ROCKCHIP -e ROCKCHIP_DW_MIPI_DSI -e DRM_PANEL_SIMPLE \
-          -e BACKLIGHT_PWM -e PWM_ROCKCHIP -e MFD_RK8XX_I2C -e REGULATOR_RK808 \
-          -e CHARGER_RK817 -e ROCKCHIP_SARADC -e SND_SOC_ROCKCHIP_I2S -e SND_SOC_RK817 \
-          -e PINCTRL_ROCKCHIP -e I2C_RK3X -e MMC_DW -e MMC_DW_ROCKCHIP \
-          -e SERIAL_8250_DW -e USB_DWC2 -e PHY_ROCKCHIP_INNO_USB2 \
-          -e ARM_ROCKCHIP_CPUFREQ -e ROCKCHIP_IODOMAIN -e ROCKCHIP_THERMAL \
-          -e SND_SIMPLE_CARD -e INPUT_EVDEV
+          -e ARCH_ROCKCHIP -e DRM -e ROCKCHIP_IOMMU -e DRM_ROCKCHIP \
+          -e ROCKCHIP_DW_MIPI_DSI -e DRM_PANEL_SIMPLE -e BACKLIGHT_PWM \
+          -e PWM_ROCKCHIP -e MFD_RK8XX_I2C -e REGULATOR_RK808 -e CHARGER_RK817 \
+          -e ROCKCHIP_SARADC -e SND_SOC_ROCKCHIP -e SND_SOC_ROCKCHIP_I2S \
+          -e SND_SOC_RK817 -e PINCTRL_ROCKCHIP -e I2C_RK3X -e MMC_DW \
+          -e MMC_DW_ROCKCHIP -e SERIAL_8250_DW -e USB_DWC2 \
+          -e PHY_ROCKCHIP_INNO_USB2 -e ARM_ROCKCHIP_CPUFREQ -e ROCKCHIP_IODOMAIN \
+          -e ROCKCHIP_THERMAL -e SND_SIMPLE_CARD -e INPUT_EVDEV
         make olddefconfig
-        falhas=0
-        for sym in CONFIG_ARCH_PX30 CONFIG_DRM_ROCKCHIP CONFIG_ROCKCHIP_SARADC CONFIG_MFD_RK8XX_I2C; do
-          grep -q "^${sym}=y" .config || { echo "ERRO: ${sym} ausente na config"; falhas=$((falhas + 1)); }
+
+        # Tabela de valores: se um nome estiver errado, aparece vazio no log em
+        # vez de derrubar o build sem explicação.
+        echo "--- valores na config final ---"
+        for sym in ARCH_ROCKCHIP DRM DRM_ROCKCHIP ROCKCHIP_IOMMU ROCKCHIP_DW_MIPI_DSI \
+                   DRM_PANEL_SIMPLE MFD_RK8XX_I2C REGULATOR_RK808 ROCKCHIP_SARADC \
+                   SND_SOC_ROCKCHIP_I2S SND_SOC_RK817 MMC_DW_ROCKCHIP PWM_ROCKCHIP \
+                   I2C_RK3X SERIAL_8250_DW USB_DWC2; do
+          valor=$(sed -n "s/^CONFIG_${sym}=//p" .config)
+          printf '  %-32s [%s]\n' "$sym" "${valor:-AUSENTE}"
         done
-        if [ "$falhas" -ne 0 ]; then exit 1; fi
+
+        # Só o essencial trava o build, e aceitando =m (módulo vai no rootfs).
+        falhas=0
+        for sym in ARCH_ROCKCHIP DRM_ROCKCHIP MFD_RK8XX_I2C ROCKCHIP_SARADC \
+                   MMC_DW_ROCKCHIP PWM_ROCKCHIP I2C_RK3X REGULATOR_RK808 SND_SOC_RK817; do
+          if ! grep -qE "^CONFIG_${sym}=(y|m)$" .config; then
+            echo "ERRO: CONFIG_${sym} não ficou ligado (nem y nem m)"
+            falhas=$((falhas + 1))
+          fi
+        done
+        if [ "$falhas" -ne 0 ]; then
+          echo "--- linhas de ROCKCHIP/PX30 na config ---"
+          grep -E "ROCKCHIP|PX30|SARADC|RK8XX" .config || true
+          exit 1
+        fi
         make -j"$(nproc)" Image modules
         test -f arch/arm64/boot/Image || { echo "ERRO: Image não gerada"; exit 1; }
         echo "Image: $(stat -c%s arch/arm64/boot/Image) bytes | módulos: $(find . -name '*.ko' | wc -l)"
