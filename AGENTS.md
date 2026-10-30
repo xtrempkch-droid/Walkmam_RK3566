@@ -757,3 +757,47 @@ outro commit resolve sem force-push na branch. Para conferir se o build nasceu, 
   eu baixar e extrair `idbloader.img`/`u-boot.itb` + `boot.scr` (ver §9.7). Depois:
   job RK3326 no CI (checklist §5) e o `rocknix-singleadc-joypad.c` + entrada do painel
   no `panel-sitronix-st7703.c` (ambos vêm da ROCKNIX, o CI já clona).
+
+### 2026-10-30 (3) — DeepSeek (linha RK3326 separada no CI + loader mainline)
+
+- **Pedido:** separar a linha RK3326 da RK3566 no Actions, deixar o usuário
+  escolher o que construir no *Run workflow* e fazer o release carregar todas as
+  versões.
+- **Loader oficial analisado:** extraí da imagem ROCKNIX (2,05 GiB, sha256
+  `ae5e4fcf…`) o layout (p1 FAT32 2 GiB em 16 MiB + p2 ext4 32 MiB), o
+  `boot.scr` (decifrado: lê `hwid_adc` e escolhe DTB por faixa de ADC; **não há
+  faixa para o R36S**, por isso o `extlinux.conf` fixa `FDT`), o `KERNEL`
+  (arm64 Image, Linux **7.1.2**) e os 16 MiB de loader (**U-Boot 2017.09** de
+  fabricante). **O idbloader oficial não é rkbin** (começa com código, não com
+  `RK33`) — não é portável, mas também não é necessário.
+- **Loader limpo é viável:** `odroid-go2_defconfig` existe no U-Boot fixado
+  (`0a55b09`), usa `uart2` em `0xFF160000` (mesmo console do R36S a 1500000),
+  tem `TPL_RAM`/`ROCKCHIP_SDRAM_COMMON` (DDR pelo blob `px30_ddr` do rkbin) e
+  `OF_LIBFDT_OVERLAY`. Faltava só `DISTRO_DEFAULTS`/`CMD_SYSBOOT`/`FS_FAT`.
+- **Feito:** `.github/workflows/build-rk3326.yml` (novo, **só workflow_dispatch**;
+  a linha RK3566 em `build.yml` ficou intacta) com entradas `target`
+  (`imagem`/`loader`), `variant` (`kodi`/`retroarch`) e `baudrate`; o job monta
+  U-Boot mainline → kernel v6.12 + `panel-generic-dsi.c` + `rocknix-singleadc-joypad.c`
+  (commits fixos da ROCKNIX) → DTB oficial + overlay compilado → rootfs Debian →
+  `build/build.sh`, e publica `rk3326-r36s-<variant>-sdcard.img.gz` (+`.sha256`)
+  no **mesmo** release da linha RK3566 (assets acumulam, `--clobber` por arquivo).
+  Removido `build-rk3326-loader.yml` (virou o job acima).
+- **`build/create-image.sh`** ganhou três knobs por env, com os valores históricos
+  como padrão: `WALKMAN_EARLYCON`, `WALKMAN_DTBS_GLOB`,
+  `WALKMAN_PANEL_OVERLAY_NAME/_FILE` (este último escreve `FDTOVERLAYS` no
+  `extlinux.conf`).
+- **`devices/game-console-r35s`**: `image_dtb=rk3326-gameconsole-r36s.dtb`
+  (binário oficial copiado para `dts/`, sha256 `b84245e6…`),
+  `uboot_defconfig=odroid-go2`, `status=ci-rk3326-aguardando-teste-em-hardware`.
+- **Armadilha de ferramenta (custou 2 idas e voltas):** o shell desta máquina é
+  **Windows PowerShell 5.1**, onde `Set-Content -Encoding UTF8` grava **com BOM**
+  e `Get-Content -Raw` lê arquivo sem BOM como ANSI → arquivos reescritos saíram
+  com **dupla codificação** (`prÃ³prio`). Corrigido com um reparo em Python
+  (`txt.encode("cp1252").decode("utf-8")`) e checado por BOM/`Ã`. **Não reescrever
+  arquivo com acento usando `Set-Content`; usar a ferramenta de escrita ou Python.**
+- **Validado localmente:** YAML parseia, 13 passos, `python` embutido compila,
+  heredocs `PY`/`EOF` balanceados, knobs presentes no `create-image.sh`.
+- **Pendente / próximo:** (1) rodar `target=loader` e testar num cartão que
+  funcione com `instalar-loader.sh` (serial 1500000) — decide se o U-Boot
+  mainline inicializa esta placa; (2) só depois `target=imagem`; (3) se o
+  singleadc não compilar em 6.12, o log diz e o ajuste é localizado.

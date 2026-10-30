@@ -21,6 +21,13 @@ DISPLAY_TRANSFORM=${9:-}
 # nao cabe nele (o dd morreria no meio e deixaria o eMMC corrompido).
 # A raiz usada e ~1,3 GB. Para cartoes maiores: WALKMAN_IMAGE_SIZE_MB=8192.
 IMAGE_SIZE_MB=${WALKMAN_IMAGE_SIZE_MB:-3584}
+# Knobs por SoC/placa (default = RK3566, o comportamento historico). O RK3326
+# (Game Console R35S/R36S) usa outro endereco de UART2 e outro padrao de DTB,
+# e pode precisar de um overlay de painel (FDTOVERLAYS).
+EARLYCON=${WALKMAN_EARLYCON:-0xfe660000}
+DTBS_GLOB=${WALKMAN_DTBS_GLOB:-rk3566-powkiddy-*.dtb}
+PANEL_OVERLAY_NAME=${WALKMAN_PANEL_OVERLAY_NAME:-}
+PANEL_OVERLAY_FILE=${WALKMAN_PANEL_OVERLAY_FILE:-}
 BOOT_MOUNT=
 ROOT_MOUNT=
 LOOP_DEV=
@@ -179,10 +186,24 @@ if [[ -n $_real_partuuid && $_real_partuuid != "$ROOT_UUID" ]]; then
 fi
 cp "$KERNEL_DIR/arch/arm64/boot/Image" "$BOOT_MOUNT/Image"
 mkdir -p "$BOOT_MOUNT/dtbs" "$BOOT_MOUNT/extlinux"
-for dtb in "$KERNEL_DIR"/arch/arm64/boot/dts/rockchip/rk3566-powkiddy-*.dtb; do
+for dtb in "$KERNEL_DIR"/arch/arm64/boot/dts/rockchip/$DTBS_GLOB; do
     [[ -f $dtb ]] && cp "$dtb" "$BOOT_MOUNT/dtbs/"
 done
 cp "$DTB_FILE" "$BOOT_MOUNT/dtbs/$DTB_NAME"
+
+# Overlay de painel opcional (RK3326: o DTB base nao descreve a sequencia de
+# init do painel; o overlay aplica a variante certa sem recompilar o DTB).
+OVERLAY_LINE=
+if [[ -n $PANEL_OVERLAY_NAME ]]; then
+    if [[ -z $PANEL_OVERLAY_FILE || ! -f $PANEL_OVERLAY_FILE ]]; then
+        echo "Overlay de painel pedido mas nao encontrado: $PANEL_OVERLAY_FILE" >&2
+        exit 1
+    fi
+    mkdir -p "$BOOT_MOUNT/overlays"
+    cp "$PANEL_OVERLAY_FILE" "$BOOT_MOUNT/overlays/$PANEL_OVERLAY_NAME"
+    OVERLAY_LINE="
+    FDTOVERLAYS /overlays/$PANEL_OVERLAY_NAME"
+fi
 
 # Rotação da interface Kodi/Weston na saída DSI-1. O valor fica em
 # walkmam.conf, na partição FAT (BOOT): dá para editar no PC e testar outro
@@ -226,7 +247,7 @@ if [[ $DEVICE == powkiddy-x35s && $(basename -- "$DTB_FILE") == rocknix-official
 LABEL Mainline (X35S - DTB ROCKNIX)
     KERNEL /Image
     FDT /dtbs/rk3566-powkiddy-x35s-rocknix.dtb
-    APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=PARTUUID=$ROOT_UUID rw
+    APPEND quiet rootwait earlycon=uart8250,mmio32,$EARLYCON console=ttyS2,1500000n8 console=tty1 root=PARTUUID=$ROOT_UUID rw
 BOOTCFG
 fi
 if [[ $DEVICE == powkiddy-x35s && -f $X35S_DTB ]]; then
@@ -235,7 +256,7 @@ if [[ $DEVICE == powkiddy-x35s && -f $X35S_DTB ]]; then
 LABEL Mainline (X35S - nosso .dtb)
     KERNEL /Image
     FDT /dtbs/rk3566-powkiddy-x35s-nosso.dtb
-    APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=PARTUUID=$ROOT_UUID rw
+    APPEND quiet rootwait earlycon=uart8250,mmio32,$EARLYCON console=ttyS2,1500000n8 console=tty1 root=PARTUUID=$ROOT_UUID rw
 BOOTCFG
 fi
 
@@ -244,7 +265,7 @@ if [[ -f $BOOT_MOUNT/dtbs/rk3566-powkiddy-x55.dtb ]]; then
 LABEL Mainline (Powkiddy X55)
     KERNEL /Image
     FDT /dtbs/rk3566-powkiddy-x55.dtb
-    APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=PARTUUID=$ROOT_UUID rw walkmam_x55_gamepad=rocknix-v1
+    APPEND quiet rootwait earlycon=uart8250,mmio32,$EARLYCON console=ttyS2,1500000n8 console=tty1 root=PARTUUID=$ROOT_UUID rw walkmam_x55_gamepad=rocknix-v1
 BOOTCFG
 fi
 
@@ -256,8 +277,8 @@ fi
 cat > "$BOOT_MOUNT/extlinux/extlinux.conf" << BOOTCFG
 LABEL Walkmam ($DEVICE - $VARIANT)
     KERNEL /Image
-    FDT /dtbs/$DTB_NAME
-    APPEND quiet rootwait earlycon=uart8250,mmio32,0xfe660000 console=ttyS2,1500000n8 console=tty1 root=PARTUUID=$ROOT_UUID rw$BOOT_MARKER
+    FDT /dtbs/$DTB_NAME$OVERLAY_LINE
+    APPEND quiet rootwait earlycon=uart8250,mmio32,$EARLYCON console=ttyS2,1500000n8 console=tty1 root=PARTUUID=$ROOT_UUID rw$BOOT_MARKER
 BOOTCFG
 
 cp -a "$ROOTFS_DIR"/. "$ROOT_MOUNT"/

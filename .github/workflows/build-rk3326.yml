@@ -1,0 +1,367 @@
+name: Build RK3326 (Game Console R35S/R36S)
+
+# LINHA RK3326 — SEPARADA da linha RK3566 (build.yml). Nada aqui roda no push:
+# só pelo botão Run workflow, com escolha do que construir. Assim um build novo
+# desta placa não consome runner nem toca nas imagens do X55/X35S/X35H.
+#
+# Entradas (Run workflow):
+#   target  = loader  -> só o U-Boot mainline (teste isolado, cabe num cartão
+#                        que já funciona; grava só os setores do loader)
+#           = imagem  -> imagem SD completa (loader + kernel v6.12 + DTB +
+#                        overlay de painel + rootfs Debian + serviço escolhido)
+#   variant = kodi | retroarch (define pacotes, overlay e serviço do tty1)
+#
+# Releases: publica com nome proprio (rk3326-r36s-<variant>-sdcard.img.gz) no
+# MESMO release da linha RK3566 — tag vira o release da tag, push/main vira
+# `latest`. Como cada plataforma tem nome de arquivo distinto e o upload usa
+# `--clobber` por arquivo, as quatro imagens convivem sem se apagarem.
+#
+# Contexto e decisoes: docs/r35s-rk3326.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "O que construir"
+        type: choice
+        options:
+          - imagem
+          - loader
+        default: imagem
+      variant:
+        description: "Variante (só para target=imagem)"
+        type: choice
+        options:
+          - kodi
+          - retroarch
+        default: kodi
+      baudrate:
+        description: "Baudrate do console do U-Boot (R36S = 1500000)"
+        default: "1500000"
+        required: false
+
+concurrency:
+  group: build-rk3326-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+env:
+  TARGET: ${{ github.event.inputs.target }}
+  VARIANT: ${{ github.event.inputs.variant }}
+  BAUD: ${{ github.event.inputs.baudrate }}
+
+jobs:
+  build-rk3326:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Install Build Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential gcc-aarch64-linux-gnu \
+          bison flex libssl-dev bc swig libgnutls28-dev uuid-dev \
+          device-tree-compiler python3 python3-dev python3-setuptools python3-pyelftools \
+          debootstrap qemu-user-static parted kpartx dosfstools e2fsprogs rsync
+
+    - name: Fetch U-Boot and rkbin (commits fixos, os mesmos do build.yml)
+      run: |
+        UBOOT_COMMIT=0a55b098d6f5f6bafa84fc2f18b433dd167bf729
+        RKBIN_COMMIT=3e288fe814e059dd06833495f845cab04ac20a5c
+        git init -q uboot
+        git -C uboot remote add origin https://source.denx.de/u-boot/u-boot.git
+        if git -C uboot fetch -q --depth 1 origin "$UBOOT_COMMIT"; then
+          git -C uboot checkout -q --detach FETCH_HEAD
+        else
+          rm -rf uboot
+          git clone -q --filter=blob:none --no-checkout https://source.denx.de/u-boot/u-boot.git uboot
+          git -C uboot checkout -q --detach "$UBOOT_COMMIT"
+        fi
+        echo "U-Boot em $(git -C uboot rev-parse HEAD)"
+        git init -q rkbin
+        git -C rkbin remote add origin https://github.com/rockchip-linux/rkbin.git
+        if git -C rkbin fetch -q --depth 1 origin "$RKBIN_COMMIT"; then
+          git -C rkbin checkout -q --detach FETCH_HEAD
+        else
+          rm -rf rkbin
+          git clone -q --filter=blob:none --no-checkout https://github.com/rockchip-linux/rkbin.git rkbin
+          git -C rkbin checkout -q --detach "$RKBIN_COMMIT"
+        fi
+        echo "rkbin em $(git -C rkbin rev-parse HEAD)"
+
+    - name: Build U-Boot mainline (odroid-go2) for RK3326
+      run: |
+        cd uboot
+        export ARCH=arm64
+        export CROSS_COMPILE=aarch64-linux-gnu-
+
+        BL31="../rkbin/bin/rk33/px30_bl31_v1.37.elf"
+        TPL="../rkbin/bin/rk33/px30_ddr_333MHz_v2.12.bin"
+        test -f "$BL31" || { echo "ERRO: BL31 ausente: $BL31"; ls ../rkbin/bin/rk33/; exit 1; }
+        test -f "$TPL"  || { echo "ERRO: DDR/TPL ausente: $TPL"; ls ../rkbin/bin/rk33/; exit 1; }
+
+        make odroid-go2_defconfig
+
+        # O defconfig de fábrica do odroid-go2 não tem distro_boot/sysboot nem
+        # FAT (ele boota por FIT/SPI); sem isso o U-Boot não lê extlinux.conf.
+        python3 - "$BAUD" <<'PY'
+        import sys
+        baud = sys.argv[1]
+        queremos = [
+            "CONFIG_DISTRO_DEFAULTS=y",
+            "CONFIG_CMD_SYSBOOT=y",
+            "CONFIG_CMD_FS_GENERIC=y",
+            "CONFIG_FS_FAT=y",
+            "CONFIG_CMD_PART=y",
+            "CONFIG_OF_LIBFDT_OVERLAY=y",
+            "CONFIG_BAUDRATE=%s" % baud,
+            "# CONFIG_SPL_FIT_SIGNATURE is not set",
+        ]
+        cfg = "configs/odroid-go2_defconfig"
+        src = open(cfg).read().splitlines()
+        def chave(l):
+            return l.split("=")[0].replace("# ", "").replace(" is not set", "").strip()
+        vistos = set()
+        saida = []
+        for l in src:
+            k = chave(l)
+            novo = next((q for q in queremos if chave(q) == k), None)
+            if novo:
+                saida.append(novo); vistos.add(k)
+            else:
+                saida.append(l)
+        for q in queremos:
+            if chave(q) not in vistos:
+                saida.append(q)
+        open(cfg, "w").write("\n".join(saida) + "\n")
+        PY
+
+        make odroid-go2_defconfig
+        falhas=0
+        for sym in CONFIG_DISTRO_DEFAULTS CONFIG_CMD_SYSBOOT CONFIG_FS_FAT CONFIG_OF_LIBFDT_OVERLAY CONFIG_TPL_RAM; do
+          if ! grep -q "^${sym}=y" .config; then
+            echo "ERRO: ${sym} não ficou ligado na config final"
+            falhas=$((falhas + 1))
+          fi
+        done
+        if [ "$falhas" -ne 0 ]; then
+          grep -E "SYSBOOT|FS_FAT|DISTRO|LIBFDT_OVERLAY|BAUDRATE" .config || true
+          exit 1
+        fi
+        grep -E "^CONFIG_(BAUDRATE|CMD_SYSBOOT|FS_FAT|DISTRO_DEFAULTS)=" .config
+
+        make -j"$(nproc)" BL31="$BL31" ROCKCHIP_TPL="$TPL"
+
+        test -f idbloader.img && test -f u-boot.itb || { echo "ERRO: binman não gerou idbloader/itb"; exit 1; }
+        echo "idbloader: $(stat -c%s idbloader.img) bytes | u-boot.itb: $(stat -c%s u-boot.itb) bytes"
+
+    - name: Empacotar loader
+      run: |
+        mkdir -p out
+        cp uboot/idbloader.img out/
+        cp uboot/u-boot.itb out/
+        cp uboot/.config out/u-boot.cfg
+        cat > out/instalar-loader.sh <<'EOF'
+        #!/bin/sh
+        # Grava o loader mainline (odroid-go2) no cartão SD, só na região do
+        # loader (setor 64 e setor 16384). Não toca em partições nem em dados.
+        #   ./instalar-loader.sh /dev/sdX
+        set -eu
+        DEV=${1:?uso: $0 /dev/sdX}
+        [ -b "$DEV" ] || { echo "não é dispositivo de bloco: $DEV"; exit 1; }
+        dd if=idbloader.img of="$DEV" seek=64    conv=notrunc,fsync status=progress
+        dd if=u-boot.itb  of="$DEV" seek=16384 conv=notrunc,fsync status=progress
+        sync
+        echo "Pronto. Rollback: os 16 MiB do loader original da ROCKNIX."
+        EOF
+        chmod +x out/instalar-loader.sh
+        cd out && sha256sum idbloader.img u-boot.itb > SHA256SUMS && cat SHA256SUMS
+
+    - name: Upload loader artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: rk3326-loader-odroid-go2
+        path: out/
+        retention-days: 90
+
+    # ------------------------------------------------------------------ kernel
+    - name: Fetch kernel v6.12 and ROCKNIX drivers
+      if: github.event.inputs.target == 'imagem'
+      run: |
+        git clone -q --depth 1 --branch v6.12 https://github.com/torvalds/linux.git kernel
+
+        # panel-generic-dsi.c: driver de painel por device tree (o R36S panel4
+        # usa ele via overlay). Vem do repositório da ROCKNIX, já usado na X35S.
+        ROCKNIX_COMMIT=8c081eb645f8f9a9fc59fe0c8c7927ce79d5192c
+        git init -q rocknix-src
+        git -C rocknix-src remote add origin https://github.com/ROCKNIX/distribution.git
+        git -C rocknix-src fetch -q --depth 1 origin "$ROCKNIX_COMMIT"
+        git -C rocknix-src checkout -q --detach FETCH_HEAD
+        GENERIC_DSI=$(find rocknix-src -iname 'panel-generic-dsi.c' | head -n1)
+        test -n "$GENERIC_DSI" || { echo "ERRO: panel-generic-dsi.c não encontrado na ROCKNIX"; exit 1; }
+        echo "panel-generic-dsi.c: $GENERIC_DSI"
+
+        # rocknix-singleadc-joypad.c: é o driver de entrada do R36S (17 botões +
+        # 2 analógicos por multiplexador de ADC). Commit fixo do repositório.
+        JOYPAD_COMMIT=d02ed13aae08113f6f9e0e9d699cb29bb3450fa2
+        git init -q joypad-src
+        git -C joypad-src remote add origin https://github.com/ROCKNIX/rocknix-joypad.git
+        git -C joypad-src fetch -q --depth 1 origin "$JOYPAD_COMMIT"
+        git -C joypad-src checkout -q --detach FETCH_HEAD
+        test -f joypad-src/rocknix-singleadc-joypad.c || { echo "ERRO: singleadc-joypad.c ausente"; exit 1; }
+
+        cp "$GENERIC_DSI" kernel/drivers/gpu/drm/panel/panel-generic-dsi.c
+        grep -q 'panel-generic-dsi' kernel/drivers/gpu/drm/panel/Makefile \
+          || printf 'obj-y += panel-generic-dsi.o\n' >> kernel/drivers/gpu/drm/panel/Makefile
+
+        cp joypad-src/rocknix-singleadc-joypad.c kernel/drivers/input/joystick/
+        grep -q 'rocknix-singleadc-joypad' kernel/drivers/input/joystick/Makefile \
+          || printf 'obj-m += rocknix-singleadc-joypad.o\n' >> kernel/drivers/input/joystick/Makefile
+
+    - name: Build kernel for RK3326
+      if: github.event.inputs.target == 'imagem'
+      run: |
+        cd kernel
+        export ARCH=arm64
+        export CROSS_COMPILE=aarch64-linux-gnu-
+        make defconfig
+        ./scripts/config --file .config \
+          -e ARCH_PX30 -e DRM_ROCKCHIP -e ROCKCHIP_DW_MIPI_DSI -e DRM_PANEL_SIMPLE \
+          -e BACKLIGHT_PWM -e PWM_ROCKCHIP -e MFD_RK8XX_I2C -e REGULATOR_RK808 \
+          -e CHARGER_RK817 -e ROCKCHIP_SARADC -e SND_SOC_ROCKCHIP_I2S -e SND_SOC_RK817 \
+          -e PINCTRL_ROCKCHIP -e I2C_RK3X -e MMC_DW -e MMC_DW_ROCKCHIP \
+          -e SERIAL_8250_DW -e USB_DWC2 -e PHY_ROCKCHIP_INNO_USB2 \
+          -e ARM_ROCKCHIP_CPUFREQ -e ROCKCHIP_IODOMAIN -e ROCKCHIP_THERMAL \
+          -e SND_SIMPLE_CARD -e INPUT_EVDEV
+        make olddefconfig
+        falhas=0
+        for sym in CONFIG_ARCH_PX30 CONFIG_DRM_ROCKCHIP CONFIG_ROCKCHIP_SARADC CONFIG_MFD_RK8XX_I2C; do
+          grep -q "^${sym}=y" .config || { echo "ERRO: ${sym} ausente na config"; falhas=$((falhas + 1)); }
+        done
+        if [ "$falhas" -ne 0 ]; then exit 1; fi
+        make -j"$(nproc)" Image modules
+        test -f arch/arm64/boot/Image || { echo "ERRO: Image não gerada"; exit 1; }
+        echo "Image: $(stat -c%s arch/arm64/boot/Image) bytes | módulos: $(find . -name '*.ko' | wc -l)"
+
+    - name: Preparar DTB e overlay de painel
+      if: github.event.inputs.target == 'imagem'
+      run: |
+        mkdir -p dtbs/overlays
+        # DTB base: o oficial da ROCKNIX para o R36S (painel st7703 + joypad
+        # singleadc). Está no repositório, com a origem documentada.
+        cp devices/game-console-r35s/dts/rk3326-gameconsole-r36s.dtb dtbs/
+        test -f devices/game-console-r35s/dts/panel-overlay/mipi-panel.dts \
+          || { echo "ERRO: overlay de painel ausente"; exit 1; }
+        dtc -@ -O dtb -o dtbs/overlays/mipi-panel.dtbo \
+            devices/game-console-r35s/dts/panel-overlay/mipi-panel.dts
+        ls -l dtbs dtbs/overlays
+        dtc -I dtb -O dts dtbs/overlays/mipi-panel.dtbo > /dev/null || {
+          echo "ERRO: o overlay compilado não reabre"; exit 1; }
+
+    # ------------------------------------------------------------------ rootfs
+    - name: Build Debian rootfs
+      if: github.event.inputs.target == 'imagem'
+      run: |
+        sudo debootstrap --arch=arm64 --foreign --variant=minbase \
+          bookworm rootfs http://deb.debian.org/debian
+        sudo cp /usr/bin/qemu-aarch64-static rootfs/usr/bin/
+        sudo chroot rootfs /debootstrap/debootstrap --second-stage
+
+        sudo tee rootfs/etc/apt/sources.list > /dev/null <<'EOF'
+        deb http://deb.debian.org/debian bookworm main contrib non-free-firmware
+        deb http://deb.debian.org/debian bookworm-updates main contrib non-free-firmware
+        deb http://security.debian.org/debian-security bookworm-security main contrib non-free-firmware
+        EOF
+
+        PACOTES="$(grep -hv '^[[:space:]]*#' common/packages/base.list variants/$VARIANT/packages/*.list | tr '\n' ' ')"
+        echo "pacotes: $PACOTES"
+        sudo chroot rootfs apt-get update
+        sudo chroot rootfs env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $PACOTES
+
+        # overlays do projeto (comuns + da variante)
+        sudo cp -a common/overlay/. rootfs/
+        sudo cp -a variants/$VARIANT/overlay/. rootfs/
+
+        # módulos do kernel (o driver do joypad é módulo)
+        sudo make -C kernel INSTALL_MOD_PATH="$PWD/rootfs" modules_install
+
+        # SSH com senha do root (mesma decisão da linha RK3566)
+        sudo mkdir -p rootfs/etc/ssh/sshd_config.d
+        sudo tee rootfs/etc/ssh/sshd_config.d/10-walkmam.conf > /dev/null <<'EOF'
+        PermitRootLogin yes
+        PasswordAuthentication yes
+        EOF
+        sudo chroot rootfs sh -c 'echo root:root | chpasswd'
+
+        # serviço do tty1 conforme a variante
+        if [ "$VARIANT" = "kodi" ]; then
+          SERVICO=kodi.service
+        else
+          SERVICO=retroarch.service
+        fi
+        sudo chroot rootfs systemctl enable "$SERVICO"
+        sudo chroot rootfs systemctl mask getty@tty1.service || true
+        sudo chroot rootfs systemctl enable serial-getty@ttyS2.service || true
+        rm -f rootfs/usr/bin/qemu-aarch64-static
+
+    - name: Create SD Card Image
+      if: github.event.inputs.target == 'imagem'
+      run: |
+        # RK3326: UART2 em 0xFF160000 (o RK3566 usa 0xFE660000), DTBs rk3326-*
+        # e o painel aplicado por overlay em vez de DTB próprio.
+        # Os WALKMAN_* vão explícitos no `sudo env`: `sudo -E` depende de SETENV
+        # no sudoers e nos runners isso não é garantido.
+        sudo env \
+          WALKMAN_UBOOT_DIR="$PWD/uboot" \
+          WALKMAN_KERNEL_DIR="$PWD/kernel" \
+          WALKMAN_ROOTFS_DIR="$PWD/rootfs" \
+          WALKMAN_OUTPUT_DIR="$PWD/img" \
+          WALKMAN_DTB_SOURCE="$PWD/devices/game-console-r35s/dts/rk3326-gameconsole-r36s.dtb" \
+          WALKMAN_IMAGE_NAME="rk3326-r36s-${VARIANT}-sdcard.img" \
+          WALKMAN_EARLYCON=0xff160000 \
+          WALKMAN_DTBS_GLOB="rk3326-*.dtb" \
+          WALKMAN_PANEL_OVERLAY_NAME=mipi-panel.dtbo \
+          WALKMAN_PANEL_OVERLAY_FILE="$PWD/dtbs/overlays/mipi-panel.dtbo" \
+          build/build.sh game-console-r35s "$VARIANT"
+        ls -l img/
+        mkdir -p out
+        for f in img/*.img.gz; do
+          [ -f "$f" ] || continue
+          cp "$f" out/
+          ( cd out && sha256sum "$(basename "$f")" > "$(basename "$f").sha256" )
+        done
+        ls -l out/
+
+    - name: Upload image artifact
+      if: github.event.inputs.target == 'imagem'
+      uses: actions/upload-artifact@v4
+      with:
+        name: rk3326-r36s-image
+        path: out/*.img.gz*
+        retention-days: 90
+
+    - name: Publicar no release
+      if: github.event.inputs.target == 'imagem'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        TAG="${GITHUB_REF_NAME}"
+        if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+          RELEASE="${TAG}"
+          gh release view "$RELEASE" > /dev/null 2>&1 \
+            || gh release create "$RELEASE" --title "$RELEASE" --notes "Imagens do Walkmam (RK3566 e RK3326)."
+        else
+          RELEASE="latest"
+          gh release view "$RELEASE" > /dev/null 2>&1 \
+            || gh release create "$RELEASE" --prerelease --title "latest" --notes "Imagem rolante do Walkmam."
+        fi
+        for f in out/*.img.gz out/*.img.gz.sha256; do
+          [ -f "$f" ] || continue
+          gh release upload "$RELEASE" "$f" --clobber
+        done
+        echo "publicado no release: $RELEASE"
