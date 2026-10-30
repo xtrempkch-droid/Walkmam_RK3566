@@ -335,7 +335,9 @@ jobs:
         sudo chroot rootfs systemctl enable "$SERVICO"
         sudo chroot rootfs systemctl mask getty@tty1.service || true
         sudo chroot rootfs systemctl enable serial-getty@ttyS2.service || true
-        rm -f rootfs/usr/bin/qemu-aarch64-static
+        # o arquivo foi copiado com sudo (dono root): sem sudo o rm falha com
+        # 'Permission denied' e derruba o passo inteiro (run #3).
+        sudo rm -f rootfs/usr/bin/qemu-aarch64-static
 
     - name: Create SD Card Image
       if: github.event.inputs.target == 'imagem'
