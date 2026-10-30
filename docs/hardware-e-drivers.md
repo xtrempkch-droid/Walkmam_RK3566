@@ -301,7 +301,7 @@ device tree, uma por elemento da lista. Três prefixos (CONFIRMADO em
 | Prefixo | Função | Chaves aceitas |
 | --- | --- | --- |
 | `G` | globais do painel | `size=<largura_mm>,<altura_mm>`; `delays=<prepare>,<reset>,<init>,<enable>,<ready>` em ms; `format=rgb888` (também `rgb666`, `rgb666_packed`, `rgb565`); `lanes=<n>`; `flags=<hex>` |
-| `M` | um modo de vídeo | `clock=<kHz>`, `horizontal=<hdisplay>,<hsync_start>,<hsync_end>,<htotal>`, `vertical=<vdisplay>,<vsync_start>,<vsync_end>,<vtotal>`, `default=1` |
+| `M` | um modo de vídeo | `clock=<kHz>`, `horizontal=<hdisplay>,<hfront_porch>,<hsync_len>,<hback_porch>`, `vertical=<vdisplay>,<vfront_porch>,<vsync_len>,<vback_porch>`, `default=1` |
 | `I` | um passo da sequência de init | `seq=<bytes em hex>`, `dcs=<cmd em hex>`, `data=<bytes em hex>`, `read=<n>`, `wait=<ms>` |
 
 Exemplo da X35S, traduzido:
@@ -313,6 +313,20 @@ Exemplo da X35S, traduzido:
 "I seq=11 wait=250"   # SLPOUT + 250 ms
 "I seq=29 wait=50"    # DISPON
 ```
+
+> **Correção de 2026-10-30 (conferida contra overlay oficial):** os quatro números
+> de `horizontal`/`vertical` são **display, front-porch, sync-len, back-porch** —
+> não são `hsync_start`/`hsync_end`/`htotal` como este documento dizia antes.
+> A prova está na conta do exemplo acima: `640+150+50+150 = 990` e
+> `480+20+6+12 = 518`, e `30 MHz / (990 x 518) = 58,5 fps`, exatamente a taxa
+> esperada. O overlay oficial do R36S (`mipi-panel.dtbo.r36s-panel4`) confirma a
+> mesma leitura: o painel tem hfront=46/hsync=2/hback=44 e o overlay traz
+> `horizontal=640,46,2,44`. O `tools/panel_overlay_from_dts.py` já gera nesse
+> formato.
+>
+> **`flags`**: o bit `0x400` (`MIPI_DSI_MODE_VIDEO`) precisa estar ligado. O DTS
+> de fabricante do R35S usa `0xa03` e o overlay oficial usa `0xe03`; com `0xa03` o
+> `generic-dsi` não entra em modo vídeo.
 
 Consequências práticas para portar:
 

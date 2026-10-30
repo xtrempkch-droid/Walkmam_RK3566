@@ -3,9 +3,76 @@
 Ponto de partida para continuar o trabalho depois de testar no aparelho. Diz o que já
 está pronto, o que ainda é **hipótese** e exatamente o que testar e devolver.
 
-## PONTO DE RETOMADA (2026-10-25)
+## PONTO DE RETOMADA (2026-10-30)
 
 > Leia esta seção antes de qualquer coisa. O resto do documento é o histórico.
+
+### O que mudou nesta sessão
+
+1. **Análise da pasta** (pedido: "analise a pasta e entenda o status"): o estado
+   descrito abaixo (imagens #119/#120, X55 e X35H validados; X35H sem rádio e com
+   dúvida de USB) **continua sendo o do projeto**. Nada no CI mudou nesta sessão —
+   o workflow não foi tocado de propósito (push na `main` gera build).
+2. **Placa nova preparada: `devices/game-console-r35s/`** — e ela **não é RK3566**.
+   É **Rockchip RK3326** (família PX30). O diretório já existia com dois DTS
+   **decompilados** de kernel de fabricante (o painel completo) e um
+   `device.config` inválido (conteúdo `1`). Ficou assim:
+   - `device.conf` de verdade, com `image_dtb=` **vazio** e
+     `status=reference-rk3326-needs-separate-pipeline` → o empacotador **recusa**
+     a placa em vez de gerar imagem que não liga;
+   - `kernel.fragment`, `dts/Readme.md` e `uboot/README.md` com os dados
+     confirmados e o que falta medir;
+   - **overlay de painel gerado e validado** (`dts/panel-overlay/`) + a ferramenta
+     `tools/panel_overlay_from_dts.py`.
+3. **Detalhe, riscos e checklist do RK3326:** [`r35s-rk3326.md`](r35s-rk3326.md).
+
+### R35S/R36S: o painel (a parte que "escaneia" não existe)
+
+O R35S sai de fábrica com **vários modelos de tela** e cada um precisa da sua
+sequência de inicialização. Procurei o método de "escaneia e acha o modelo" na
+KNULLI: **não existe**. A KNULLI usa kernel 4.4 de fabricante com o DTB **fixo**
+`rk3326-rg351mp-linux.dtb`; a ROCKNIX/REG Linux usa **overlay no cartão**
+(`overlays/mipi-panel.dtbo`, variantes `r36s-panel1..4` / `r36s_clone` / …) e a
+documentação manda *"descubra qual você tem, ou vá trocando até funcionar"*.
+Painel DSI não tem EDID; sem driver de painel funcionando não há ID para ler.
+
+O que foi feito: converter o `mipis-panel4.dts` (que já estava na pasta) para o
+overlay `rocknix,generic-dsi` e **conferir contra o arquivo oficial**
+`mipi-panel.dtbo.r36s-panel4` → `--check-arquivo` dá **160 strings idênticas**.
+Três armadilhas que essa comparação revelou (e que estão documentadas em
+[`hardware-e-drivers.md`](hardware-e-drivers.md) §4.1):
+
+* `flags` do fabricante (`0xa03`) precisa do bit `0x400` → **`0xe03`**;
+* `horizontal`/`vertical` são **(display, front-porch, sync-len, back-porch)** —
+  a documentação anterior descrevia como hsync_start/htotal (estava ambíguo);
+* nós "50Hz"/"75Hz" do fabricante vêm com porches copiados do 60 Hz (77,4 fps);
+  o overlay oficial recalcula o `vfront-porch` para bater no nome.
+
+### Próximos passos, na ordem
+
+1. **R35S: medir no aparelho com a imagem oficial** (ROCKNIX/ArkOS) antes de
+   escrever DTS próprio: `cat /proc/device-tree/model`, qual DTB ela usa,
+   `evtest` (botões), `/sys/bus/iio/devices` (ADC), `lsblk` (TF1/TF2),
+   `ls /sys/class/udc` (USB), `rfkill list` (rádio). Isso decide o DTB base e
+   evita chutar `gpio-keys`. Depois: job RK3326 no CI (checklist em
+   [`r35s-rk3326.md`](r35s-rk3326.md) §5).
+2. **Testar um jogo de verdade** na imagem #119 (ROM em `/roms/<sistema>/`, PS1
+   exige BIOS em `/storage/bios`). É o único item da variante de jogos que falta.
+3. **X35H — teste do pendrive** (2 min): plugar e ver `ls /sys/bus/usb/devices/`.
+   Apareceu algo → porta é **host** e um adaptador USB-Ethernet dá rede/SSH; nada
+   → porta só de carga.
+4. **X35H — rádio** (sem Wi-Fi e sem BT): `mmc3: Failed to initialize a
+   non-removable card`. Precisa medir `pwrseq`/regulador no aparelho.
+5. Longo prazo (não bloqueia): VA-API, senha/SSH do root, CI chamar
+   `build/create-image.sh`, mover scripts compartilhados de
+   `variants/kodi/overlay/` para `common/overlay/`.
+
+---
+
+## PONTO DE RETOMADA (2026-10-25)
+
+> Seção anterior, mantida como histórico: o estado das duas variantes e das
+> pendências do X35H continua válido.
 
 ### Próximos passos, na ordem
 

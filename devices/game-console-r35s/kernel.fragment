@@ -1,0 +1,36 @@
+# Fragmento do Game Console R35S (RK3326).
+#
+# NADA AQUI FOI COMPILADO OU TESTADO NO APARELHO. São as opções que os dois DTS
+# de referência (dts/*.dts, decompilados de kernel de fabricante) e o driver de
+# painel exigem para o RK3326 ligar tela, som e bateria. Nomes conferidos no
+# Kconfig do Linux v6.12; a base para o resto deve ser o config da ROCKNIX para
+# RK3326 (projects/Rockchip/devices/RK3326-*/linux/linux.aarch64.conf), do mesmo
+# jeito que o pipeline faz hoje para o RK3566.
+#
+# Ver docs/r35s-rk3326.md, seção "O que o pipeline precisa".
+
+# --- SoC ---------------------------------------------------------------------
+# RK3326 é da família PX30 (mesmo controlador de clock, mesmo PHY de vídeo).
+CONFIG_ARCH_PX30=y
+
+# --- Vídeo / DSI -------------------------------------------------------------
+CONFIG_DRM_ROCKCHIP=y
+CONFIG_ROCKCHIP_DW_MIPI_DSI=y
+# Painel "original" (kd35t133): driver mainline, timings fixos no C.
+CONFIG_DRM_PANEL_ELIDA_KD35T133=y
+# Painel genérico por device tree (rocknix,generic-dsi) — usado pelos modelos de
+# tela que não são kd35t133 e pelos overlays de dts/panel-overlay/.
+# NÃO existe no mainline: o .c vem da ROCKNIX (ver docs/hardware-e-drivers.md §4.1).
+CONFIG_DRM_PANEL_GENERIC_DSI=y
+CONFIG_DRM_PANEL_SIMPLE=y
+CONFIG_BACKLIGHT_PWM=y
+
+# --- Energia / bateria / carga (rk817, igual à X55) --------------------------
+CONFIG_MFD_RK8XX_I2C=y
+CONFIG_REGULATOR_RK808=y
+CONFIG_CHARGER_RK817=y
+CONFIG_ROCKCHIP_SARADC=y
+
+# --- Áudio (codec rk817 + I2S do Rockchip) -----------------------------------
+CONFIG_SND_SOC_ROCKCHIP_I2S=y
+CONFIG_SND_SOC_RK817=y

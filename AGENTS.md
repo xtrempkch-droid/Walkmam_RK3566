@@ -9,7 +9,7 @@ Idioma do repositório: **português**. Mantenha comentários, commits e docs em
 
 ---
 
-## 0. ONDE PARAMOS (2026-10-25) — leia antes de tudo
+## 0. ONDE PARAMOS (2026-10-25, com o adendo de 2026-10-30 no fim do arquivo) — leia antes de tudo
 
 Detalhe completo em [`docs/status.md`](status.md) — seção "PONTO DE RETOMADA" no topo.
 Resumo:
@@ -74,9 +74,15 @@ build/
   create-image.sh    cria a imagem SD (precisa de root)
   configure-x55-dts.py   normaliza o nó rocknix-joypad no DTS da X55
 .github/workflows/build.yml   pipeline completo (é ele que gera a imagem)
-docs/              status.md, build.md, findings.md, roadmap.md, porting.md, architecture.md
-tools/             utilitários auxiliares
+docs/              status.md, build.md, findings.md, roadmap.md, porting.md, architecture.md,
+                   r35s-rk3326.md (placa RK3326 — fora do pipeline RK3566), hardware-e-drivers.md
+tools/             utilitários auxiliares (joypad_from_dtb.py, panel_overlay_from_dts.py)
 ```
+
+> **Placas RK3326 não entram neste pipeline.** `devices/game-console-r35s/` é
+> **RK3326** (família PX30), não RK3566: outro DTS, outro U-Boot (`odroid-go2`) e
+> outros blobs (`px30_bl31`/`px30_ddr`). Está preparada e **recusada de propósito**
+> (`image_dtb=` vazio). Ver [`docs/r35s-rk3326.md`](docs/r35s-rk3326.md).
 
 ## 3. Estado atual (resumo)
 
@@ -658,3 +664,60 @@ outro commit resolve sem force-push na branch. Para conferir se o build nasceu, 
   de montar, e **confere** o PARTUUID contra a partição montada.
 - **Lição:** em script de criação de imagem, **não** toque no loop device com `blkid`
   entre o `mkfs` e o `mount`; leia a assinatura do arquivo.
+
+### 2026-10-30 — DeepSeek (análise da pasta + placa nova R35S/RK3326 + painéis)
+
+- **Pedido:** analisar a pasta, entender/atualizar o status e **preparar o device
+  `game-console-r35s`**, usando o repositório da KNULLI para achar o driver de display
+  (a premissa era "eles escaneiam e acham o modelo de tela instalado").
+- **Análise da pasta:** o estado do projeto é o de `docs/status.md` (#119/#120 verdes,
+  X55 e X35H validados; X35H sem rádio e com dúvida de USB). **O workflow não foi
+  tocado** de propósito — push na `main` gera build. Não há `git` nesta máquina, então
+  nada foi commitado: as mudanças estão no working tree.
+- **O que já estava na pasta (e estava errado):**
+  `devices/game-console-r35s/` tinha `device.config` (nome inválido) com o conteúdo
+  `1`, dois DTS **decompilados** de kernel de fabricante e dois READMEs vazios. Os DTS
+  entregam a informação decisiva: a placa é **RK3326** (`rockchip,rk3326-odroidgo3-linux`,
+  Cortex-A35, nós PX30), **não RK3566**.
+- **Descoberta que muda o plano:** o pipeline atual é RK3566 (U-Boot
+  `powkiddy-x55-rk3566`, `rk3568_bl31`, `rk3566_ddr`, DTS `rk3566-*`). Para o RK3326 é
+  outro alvo: U-Boot **`odroid-go2`** (único rk3326 do mainline), `BL31=px30_bl31_v1.37.elf`
+  e `ROCKCHIP_TPL=px30_ddr_333MHz_v2.12.bin` (o rkbin **não tem** binário chamado
+  `rk3326`), e DTS da família `rk3326-*`. Nenhum DTS mainline é o R35S. Por isso o
+  device ficou **preparado e recusado de propósito** (`image_dtb=` vazio), como a X35H.
+- **Sobre a premissa do "escaneia e acha o painel":** **não existe** — nem na KNULLI
+  (que usa kernel 4.4 de fabricante com o DTB **fixo** `rk3326-rg351mp-linux.dtb`), nem
+  na ROCKNIX/REG Linux, cuja wiki manda *"descubra qual você tem, ou vá trocando até
+  funcionar"* e distribui **overlays** (`overlays/mipi-panel.dtbo`, variantes
+  `r36s-panel1..4`, `r36s_clone`, `rg351mp-v2`…). Painel DSI não tem EDID. O que foi
+  feito é o mecanismo equivalente e verificável: **overlay `rocknix,generic-dsi` por
+  variante de painel**.
+- **Ferramenta nova e validada:** `tools/panel_overlay_from_dts.py` converte o bloco
+  `panel@0` de um DTS de fabricante no overlay `rocknix,generic-dsi`. O formato foi
+  **conferido contra o `.dtbo` oficial** `mipi-panel.dtbo.r36s-panel4` (release
+  `panel_overlays`): `--check-arquivo` dá **160 strings idênticas**. Três armadilhas que
+  só apareceram por causa dessa comparação:
+  1. `flags` do fabricante `0xa03` precisa do bit `0x400` → **`0xe03`**;
+  2. `horizontal`/`vertical` são **(display, front-porch, sync-len, back-porch)** — a
+     doc do projeto estava ambígua (dizia hsync_start/htotal); corrigido em
+     `docs/hardware-e-drivers.md` §4.1 com a conta que prova (`30 MHz/(990x518)=58,5 fps`);
+  3. nós "50Hz"/"75Hz" do fabricante vêm com porches do 60 Hz (77,4 fps) e o overlay
+     oficial recalcula o `vfront-porch` — regra implementada e marcada como **hipótese**
+     (um ponto de dados), visível no cabeçalho do script.
+- **Arquivos criados/alterados:** `devices/game-console-r35s/{device.conf,
+  kernel.fragment,dts/Readme.md,uboot/README.md,dts/panel-overlay/*.dts}`,
+  `docs/r35s-rk3326.md` (novo), `docs/status.md` (novo ponto de retomada 2026-10-30),
+  `docs/hardware-e-drivers.md` §4.1, `AGENTS.md` (mapa + esta entrada), `README.md`
+  (tabela de dispositivos + doc), `tools/panel_overlay_from_dts.py`. Removido o
+  `device.config` placeholder.
+- **Pendente / próximo (nesta ordem):**
+  1. **Medir no aparelho com a imagem oficial** (não escrever DTS nosso antes):
+     `cat /proc/device-tree/model`, qual DTB a imagem oficial usa, `evtest`/ADC,
+     `lsblk` (TF1/TF2), `ls /sys/class/udc`, `rfkill list`. Isso decide o DTB base
+     (candidato: `rk3326-anbernic-rg351m`) e evita chutar `gpio-keys`.
+  2. Descobrir **qual variante de painel** esta unidade tem (trocar overlay até ligar).
+  3. Só então criar o **job RK3326** no CI (checklist em `docs/r35s-rk3326.md` §5) —
+     risco real: **blob de DDR** do px30 pode não servir no lote desta placa.
+- **Não testado:** nada desta placa em hardware; `dtc`/`fdtoverlay` não rodaram aqui
+  (não há `dtc` nesta máquina) — o overlay foi validado como **texto** contra o binário
+  oficial, não compilado.

@@ -46,6 +46,7 @@ docs/                     build, arquitetura e porting
 | `powkiddy-x55` | Powkiddy X55 | Device tree mainline conhecido |
 | `powkiddy-x35s` | Powkiddy X35S | DTS/DTB de referência ROCKNIX; em investigação |
 | `powkiddy-x35h` | Powkiddy X35H | Sem DTS/DTB independente validado |
+| `game-console-r35s` | Game Console R35S / R36S | **RK3326** (não RK3566): preparada, fora deste pipeline — ver [docs/r35s-rk3326.md](docs/r35s-rk3326.md) |
 
 O projeto tem **duas variantes** (o mesmo kernel/DTB, mudando o que entra no rootfs):
 **`kodi`** (multimídia) e **`retroarch`** (jogos). Detalhes, como escolher no build e
@@ -112,6 +113,7 @@ que foi verificado em hardware e o que ainda é hipótese.
 ## Documentação
 
 - [Estado do projeto e retomada](docs/status.md) — comece por aqui
+- [Game Console R35S (RK3326): painel e port](docs/r35s-rk3326.md) — placa fora do pipeline RK3566
 - [Fluxo de build](docs/build.md)
 - [Variantes: `kodi` (multimídia) e `retroarch` (jogos)](docs/variantes.md)
 - [Hardware e drivers por dispositivo (referência de portabilidade)](docs/hardware-e-drivers.md) — o que copiar para levar o aparelho a outro sistema
