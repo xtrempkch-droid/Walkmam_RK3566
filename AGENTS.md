@@ -852,3 +852,32 @@ outro commit resolve sem force-push na branch. Para conferir se o build nasceu, 
 - **Pendente / próximo:** rodar `target=imagem` (loader=oficial) e gravar; o
   `extlinux.conf` agora sai com `FDT /rk3326-gameconsole-r36s.dtb` e
   `LABEL walkmam`, igual ao que a ROCKNIX usa neste aparelho.
+
+### 2026-10-30 (6) — DeepSeek (revisão com strings do loader de fábrica: `dtb load fail` não é fatal)
+
+- **Pedido:** revisar o que fizemos e analisar como ROCKNIX/outros projetos usam
+  o RK3326, em vez de seguir por tentativa.
+- **Método:** ler o `uboot.img` de fábrica (8 MiB, já extraído da imagem ROCKNIX)
+  com `strings` + env embutido — evidência direta, sem palpite.
+- **Achado que derruba a hipótese anterior:** o `bootcmd` de fábrica é
+  `boot_android ${devtype} ${devnum};bootrkp;run distro_bootcmd;`. O
+  **`dtb load fail` é impresso pelo `bootrkp`** (passo Rockchip, antes do distro
+  boot) quando ele não acha o dtb no SPI `resource` nem em
+  `fatload mmc 1:1 ${fdt_addr_r} ${dtb_name}`. **`dtb_name` não existe no env
+  padrão**, então esse passo falha *sempre* e escreve o `error.log` de 13 bytes —
+  e, como os passos são separados por `;`, **não impede** o `distro_bootcmd`
+  (que é quem lê o `extlinux.conf`). Ou seja: `dtb load fail` **não explica** o
+  boot não ter subido; é ruído de um passo anterior.
+- **Regra que fica:** o extlinux do RK3326 tem que imitar o arquivo da ROCKNIX —
+  `FDTDIR /`, DTB na raiz, `LABEL` simples, sem espaço sobrando. Isso já está no
+  `create-image.sh` (knobs `WALKMAN_FDT_DIR`/`WALKMAN_LABEL`).
+- **Comparativo (docs §11.7):** ROCKNIX = vendor U-Boot + kernel **7.1.2** + 15
+  DTBs + overlay; KNULLI = vendor U-Boot + kernel **4.4 BSP** + DTB fixo
+  (`rk3326-rg351mp-linux.dtb`) + `boot.ini`. O nosso é o único **híbrido**
+  (loader de fábrica + mainline 6.12 + DTB oficial + overlay) — ninguém testa
+  essa combinação, então as arestas são nossas.
+- **Pendente / próximo:** (1) bootar o cartão preparado (FDTDIR + DTB na raiz +
+  cópias nos nomes que o `bootrkp`/distro boot podem tentar) e **observar se o
+  USB/rede sobe** — se subir sem imagem, é painel/overlay, não kernel;
+  (2) se não subir nada, o console serial (1500000 8N1) é o único caminho para
+  ver o trecho pós-`bootrkp`, que é onde a falha real está.
