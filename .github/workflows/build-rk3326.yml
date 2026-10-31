@@ -122,7 +122,8 @@ jobs:
         print("idbloader.img %d bytes | u-boot.itb %d bytes" %
               (8388608 - 32768, 16777216 - 8388608))
         PY
-        rm -f rocknix.img.gz
+        # o .gz NAO e apagado aqui: o passo do kernel (kernelSource=rocknix)
+        # ainda precisa dele. Quem apaga e o ultimo consumidor.
         sha256sum uboot/idbloader.img uboot/u-boot.itb
 
     - name: Fetch U-Boot and rkbin (commits fixos, os mesmos do build.yml)
@@ -309,7 +310,7 @@ jobs:
         print("%s -> kernel/arch/arm64/boot/Image (%d bytes)" % (nome, len(conteudo)))
         print("primeiros bytes:", conteudo[:4].hex(), "(1f 20 03 d5 = codigo arm64)")
         PY
-        rm -f rocknix.img rocknix.img.gz
+        rm -f rocknix.img
         ls -l kernel/arch/arm64/boot/Image
 
     - name: Fetch kernel v6.12 and ROCKNIX drivers
