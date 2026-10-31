@@ -906,3 +906,30 @@ outro commit resolve sem force-push na branch. Para conferir se o build nasceu, 
   `kernelSource=rocknix` e gravar. Se ligar, o casamento kernel/DTB era o problema
   e o passo seguinte é voltar ao 6.12 com DTB próprio (ou migrar para 7.x). Se não
   ligar, sobra `extlinux`/`booti`/loader e **serial passa a ser obrigatório**.
+
+### 2026-10-31 (2) — DeepSeek (kernel da ROCKNIX tem initramfs embutido; caminho é kernel 7.x nosso)
+
+- **Teste no hardware:** `kernelSource=rocknix` (loader + kernel 7.1.2 + DTB +
+  overlay, todos da mesma release) **também não ligou** (tela preta, nada na FAT).
+- **Causa provada pela config embutida do kernel** (extraída do próprio `Image` via
+  `IKCFG_ST`): `CONFIG_INITRAMFS_SOURCE=".../initramfs.conf .../initramfs"`. O
+  kernel da ROCKNIX **carrega initramfs próprio**, cujo `/init` procura o sistema
+  deles pelos parâmetros `boot=`/`disk=`; com o nosso `root=PARTUUID` ele não monta
+  o ext4 e para — por isso nada é escrito no cartão. Não era DTB, painel nem overlay.
+- **Também verificado:** o nosso overlay é **funcionalmente idêntico** ao oficial
+  `mipi-panel.dtbo.r36s-panel4` (mesma árvore, mesmo `target-path`, mesmas 160
+  entradas); a diferença são **156 espaços à direita** — exatamente os 156 bytes de
+  diferença (4865 vs 4709). O `--check-arquivo` anterior comparava texto normalizado
+  e por isso dizia "idênticas".
+- **Feito:** `kernelSource` voltou a `proprio` como padrão (com aviso na descrição)
+  e entrou **`kernelVersion`** (`v7.1` padrão, `v6.12`, `v7.2`) no clone do
+  `torvalds/linux` — kernel da **mesma geração do DTB oficial**, mas construído por
+  nós (sem initramfs embutido, montando o ext4 Debian). Conferido que `v7.1` e
+  `v7.2` existem como tag; `v7.1.2` não. Nome do asset agora leva a versão quando a
+  fonte é `proprio` (`...-kernel-proprio-v7.1-sdcard.img.gz`).
+- **Armadilha minha, corrigida na hora:** o `if` do sufixo da versão foi parar
+  dentro do bloco `sudo env` (que é lista de atribuições) — quebraria o shell e o
+  YAML. Movido para fora; validado de novo.
+- **Pendente / próximo:** rodar `target=imagem` + `kernelSource=proprio` +
+  `kernelVersion=v7.1` e gravar. Se ainda não ligar, **serial é obrigatório** —
+  já eliminamos loader, DTB, overlay, cmdline e rootfs como suspeitos plausíveis.
