@@ -42,6 +42,13 @@ on:
           - oficial
           - mainline
         default: oficial
+      kernelSource:
+        description: "Kernel: rocknix (mesma fonte do loader+DTB, casa com o painel) ou proprio (mainline 6.12)"
+        type: choice
+        options:
+          - rocknix
+          - proprio
+        default: rocknix
       baudrate:
         description: "Baudrate do console do U-Boot (R36S = 1500000)"
         default: "1500000"
@@ -59,6 +66,7 @@ env:
   VARIANT: ${{ github.event.inputs.variant }}
   BAUD: ${{ github.event.inputs.baudrate }}
   LOADER: ${{ github.event.inputs.loader }}
+  KERNEL_SOURCE: ${{ github.event.inputs.kernelSource }}
 
 jobs:
   build-rk3326:
@@ -77,7 +85,17 @@ jobs:
           device-tree-compiler python3 python3-dev python3-setuptools python3-pyelftools \
           debootstrap qemu-user-static parted kpartx dosfstools e2fsprogs rsync
 
-    - name: Obter loader oficial do ROCKNIX (16 MiB iniciais)
+    - name: Baixar imagem ROCKNIX - fonte unica (loader e/ou kernel)
+      if: github.event.inputs.loader == 'oficial' || github.event.inputs.kernelSource == 'rocknix'
+      run: |
+        URL="https://github.com/ROCKNIX/distribution/releases/download/20261001/ROCKNIX-RK3326.aarch64-20261001-a.img.gz"
+        SHA="d693d2bb3cd854a54a1c742c9952f20892c8344188c696beea00c77b5bd54392"
+        echo "--> baixando $URL"
+        curl -fL --retry 3 --retry-delay 5 -o rocknix.img.gz "$URL"
+        echo "$SHA  rocknix.img.gz" | sha256sum -c -
+        ls -l rocknix.img.gz
+
+    - name: Extrair loader oficial (16 MiB iniciais)
       if: github.event.inputs.loader == 'oficial'
       run: |
         # O loader de fabricante (U-Boot 2017.09) vive nos 16 MiB iniciais do
@@ -85,11 +103,6 @@ jobs:
         # O U-Boot mainline (odroid-go2 + px30 DDR) FOI TESTADO no aparelho e
         # NÃO liga (tela preta, sem rede) — ver docs/r35s-rk3326.md §12. Por
         # isso o padrão é reutilizar o loader oficial, pinado por sha256.
-        URL="https://github.com/ROCKNIX/distribution/releases/download/20261001/ROCKNIX-RK3326.aarch64-20261001-a.img.gz"
-        SHA="d693d2bb3cd854a54a1c742c9952f20892c8344188c696beea00c77b5bd54392"
-        echo "--> baixando $URL"
-        curl -fL --retry 3 --retry-delay 5 -o rocknix.img.gz "$URL"
-        echo "$SHA  rocknix.img.gz" | sha256sum -c -
         mkdir -p uboot
         python3 - <<'PY'
         import gzip
@@ -237,8 +250,70 @@ jobs:
         retention-days: 90
 
     # ------------------------------------------------------------------ kernel
+    - name: Extrair KERNEL do ROCKNIX (mesma fonte do loader e do DTB)
+      if: github.event.inputs.target == 'imagem' && github.event.inputs.kernelSource == 'rocknix'
+      run: |
+        # Descompacta a imagem inteira (2 GiB) e le a particao FAT para tirar o
+        # /KERNEL (Linux 7.1.2 da ROCKNIX). Com isso loader, kernel, DTB e
+        # overlay vem TODOS da mesma release - que e a combinacao que liga o
+        # aparelho. O rootfs continua sendo o nosso Debian.
+        python3 - <<'PY'
+        import gzip, struct, os
+        with gzip.open("rocknix.img.gz", "rb") as f, open("rocknix.img", "wb") as o:
+            for b in iter(lambda: f.read(8 << 20), b""):
+                o.write(b)
+        d = open("rocknix.img", "rb")
+        mbr = d.read(512)
+        lba, nsect = struct.unpack("<II", mbr[0x1BE + 8:0x1BE + 16])
+        p1 = lba * 512
+        print("particao 1 em %d (%.0f MiB), %d setores" % (p1, p1 / 1048576, nsect))
+        d.seek(p1); bs = d.read(512)
+        bps, = struct.unpack("<H", bs[11:13]); spc = bs[13]
+        rsvd, = struct.unpack("<H", bs[14:16]); nfats = bs[16]
+        fatsz, = struct.unpack("<I", bs[36:40]); raiz, = struct.unpack("<I", bs[44:48])
+        cb = bps * spc
+        d.seek(p1 + rsvd * bps); fat = d.read(fatsz * bps)
+        data = p1 + (rsvd + nfats * fatsz) * bps
+        def cadeia(c):
+            out = []
+            while 2 <= c < 0x0FFFFFF8:
+                out.append(c)
+                c = struct.unpack("<I", fat[c*4:c*4+4])[0] & 0x0FFFFFFF
+                if len(out) > 200000: break
+            return out
+        def bloco(cl):
+            dados = bytearray()
+            for c in cadeia(cl):
+                d.seek(data + (c - 2) * cb); dados += d.read(cb)
+            return bytes(dados)
+        def entradas(cl):
+            b = bloco(cl)
+            for i in range(0, len(b), 32):
+                e = b[i:i+32]
+                if len(e) < 32 or e[0] == 0 or e[0] == 0xE5 or e[11] == 0x0F: continue
+                nome = e[:8].decode("ascii", "replace").rstrip()
+                ext = e[8:11].decode("ascii", "replace").rstrip()
+                yield (nome + ("." + ext if ext else "")), e
+        alvo = None
+        for nome, e in entradas(raiz):
+            if nome.upper() in ("KERNEL", "IMAGE"):
+                alvo = (nome, e)
+        if alvo is None:
+            raise SystemExit("KERNEL nao encontrado na particao FAT do ROCKNIX")
+        nome, e = alvo
+        cl = (struct.unpack("<H", e[20:22])[0] << 16) | struct.unpack("<H", e[26:28])[0]
+        tam = struct.unpack("<I", e[28:32])[0]
+        conteudo = bloco(cl)[:tam]
+        os.makedirs("kernel/arch/arm64/boot", exist_ok=True)
+        open("kernel/arch/arm64/boot/Image", "wb").write(conteudo)
+        print("%s -> kernel/arch/arm64/boot/Image (%d bytes)" % (nome, len(conteudo)))
+        print("primeiros bytes:", conteudo[:4].hex(), "(1f 20 03 d5 = codigo arm64)")
+        PY
+        rm -f rocknix.img rocknix.img.gz
+        ls -l kernel/arch/arm64/boot/Image
+
     - name: Fetch kernel v6.12 and ROCKNIX drivers
-      if: github.event.inputs.target == 'imagem'
+      if: github.event.inputs.target == 'imagem' && github.event.inputs.kernelSource == 'proprio'
       run: |
         git clone -q --depth 1 --branch v6.12 https://github.com/torvalds/linux.git kernel
 
@@ -271,7 +346,7 @@ jobs:
           || printf 'obj-m += rocknix-singleadc-joypad.o\n' >> kernel/drivers/input/joystick/Makefile
 
     - name: Build kernel for RK3326
-      if: github.event.inputs.target == 'imagem'
+      if: github.event.inputs.target == 'imagem' && github.event.inputs.kernelSource == 'proprio'
       run: |
         cd kernel
         export ARCH=arm64
@@ -365,8 +440,13 @@ jobs:
         sudo cp -a common/overlay/. rootfs/
         sudo cp -a variants/$VARIANT/overlay/. rootfs/
 
-        # módulos do kernel (o driver do joypad é módulo)
-        sudo make -C kernel INSTALL_MOD_PATH="$PWD/rootfs" modules_install
+        # módulos do kernel - só no modo "proprio". Com kernel=rocknix usamos o
+        # Image deles sem os .ko (o objetivo desse modo é isolar driver/DTB).
+        if [ "${KERNEL_SOURCE}" = "proprio" ]; then
+          sudo make -C kernel INSTALL_MOD_PATH="$PWD/rootfs" modules_install
+        else
+          echo "kernel=rocknix: sem modulos proprios (teste de boot/painel)"
+        fi
 
         # SSH com senha do root (mesma decisão da linha RK3566)
         sudo mkdir -p rootfs/etc/ssh/sshd_config.d
@@ -402,7 +482,7 @@ jobs:
           WALKMAN_ROOTFS_DIR="$PWD/rootfs" \
           WALKMAN_OUTPUT_DIR="$PWD/img" \
           WALKMAN_DTB_SOURCE="$PWD/devices/game-console-r35s/dts/rk3326-gameconsole-r36s.dtb" \
-          WALKMAN_IMAGE_NAME="rk3326-r36s-${VARIANT}-${LOADER}-sdcard.img" \
+          WALKMAN_IMAGE_NAME="rk3326-r36s-${VARIANT}-${LOADER}-kernel-${KERNEL_SOURCE}-sdcard.img" \
           WALKMAN_EARLYCON=0xff160000 \
           WALKMAN_DTBS_GLOB="rk3326-*.dtb" \
           WALKMAN_FDT_DIR= \

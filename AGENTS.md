@@ -881,3 +881,28 @@ outro commit resolve sem force-push na branch. Para conferir se o build nasceu, 
   USB/rede sobe** — se subir sem imagem, é painel/overlay, não kernel;
   (2) se não subir nada, o console serial (1500000 8N1) é o único caminho para
   ver o trecho pós-`bootrkp`, que é onde a falha real está.
+
+### 2026-10-31 — DeepSeek (fonte única: kernel da própria ROCKNIX)
+
+- **Entrada do usuário:** a imagem corrigida também deu **tela preta + nenhum
+  `diagnostico.txt`** (não chegou ao userspace) e ele sugeriu **reduzir as fontes**
+  para evitar conflito — sugestão aceita, e o diagnóstico abaixo confirma.
+- **O problema real era mistura de árvores:** loader da ROCKNIX, **kernel mainline
+  6.12**, **DTB da ROCKNIX (~7.1.2)** e overlay gerado do DTB de fabricante. O DSI
+  usa bindings (`panel_description`, `video-mode`) que mudam entre 6.12 e 7.x — é
+  justamente onde kernel e DTB precisam casar. E o aparelho liga com a ROCKNIX, que
+  tem tudo da **mesma** release.
+- **Feito:** nova entrada `kernelSource` no `build-rk3326.yml`:
+  `rocknix` (padrão) extrai o **`/KERNEL` (7.1.2) da própria imagem ROCKNIX** —
+  com um leitor de FAT em Python embutido no passo, que abre o MBR, lê o BPB, a FAT
+  e a cadeia de clusters do arquivo — e o usa como `kernel/arch/arm64/boot/Image`;
+  `proprio` mantém o build do 6.12. O download da imagem virou passo único (serve
+  loader e kernel), o `modules_install` só roda em `proprio`, e o asset agora leva a
+  fonte no nome (`...-kernel-<fonte>-sdcard.img.gz`).
+- **Armadilha repetida (de propósito documentada):** `:` dentro de `name:` de um
+  step quebrou o parse do YAML de novo — corrigido; e o Python embutido foi
+  compilado localmente, como sempre.
+- **Pendente / próximo:** rodar `target=imagem` + `loader=oficial` +
+  `kernelSource=rocknix` e gravar. Se ligar, o casamento kernel/DTB era o problema
+  e o passo seguinte é voltar ao 6.12 com DTB próprio (ou migrar para 7.x). Se não
+  ligar, sobra `extlinux`/`booti`/loader e **serial passa a ser obrigatório**.
