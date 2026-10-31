@@ -291,7 +291,9 @@ jobs:
           -e SND_SOC_RK817 -e PINCTRL_ROCKCHIP -e I2C_RK3X -e MMC_DW \
           -e MMC_DW_ROCKCHIP -e SERIAL_8250_DW -e USB_DWC2 \
           -e PHY_ROCKCHIP_INNO_USB2 -e ARM_ROCKCHIP_CPUFREQ -e ROCKCHIP_IODOMAIN \
-          -e ROCKCHIP_THERMAL -e SND_SIMPLE_CARD -e INPUT_EVDEV
+          -e ROCKCHIP_THERMAL -e SND_SIMPLE_CARD -e INPUT_EVDEV \
+          -e VT -e FRAMEBUFFER_CONSOLE -e DRM_FBDEV_EMULATION \
+          -e DRM_PANEL_SITRONIX_ST7703 -e DRM_PANEL_ELIDA_KD35T133
         make olddefconfig
 
         # Tabela de valores: se um nome estiver errado, aparece vazio no log em
@@ -308,7 +310,8 @@ jobs:
         # Só o essencial trava o build, e aceitando =m (módulo vai no rootfs).
         falhas=0
         for sym in ARCH_ROCKCHIP DRM_ROCKCHIP MFD_RK8XX_I2C ROCKCHIP_SARADC \
-                   MMC_DW_ROCKCHIP PWM_ROCKCHIP I2C_RK3X REGULATOR_RK808 SND_SOC_RK817; do
+                   MMC_DW_ROCKCHIP PWM_ROCKCHIP I2C_RK3X REGULATOR_RK808 SND_SOC_RK817 \
+                   FRAMEBUFFER_CONSOLE DRM_FBDEV_EMULATION; do
           if ! grep -qE "^CONFIG_${sym}=(y|m)$" .config; then
             echo "ERRO: CONFIG_${sym} não ficou ligado (nem y nem m)"
             falhas=$((falhas + 1))
