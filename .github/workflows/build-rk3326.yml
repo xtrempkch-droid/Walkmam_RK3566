@@ -402,6 +402,8 @@ jobs:
           WALKMAN_IMAGE_NAME="rk3326-r36s-${VARIANT}-${LOADER}-sdcard.img" \
           WALKMAN_EARLYCON=0xff160000 \
           WALKMAN_DTBS_GLOB="rk3326-*.dtb" \
+          WALKMAN_FDT_DIR= \
+          WALKMAN_LABEL=walkmam \
           WALKMAN_PANEL_OVERLAY_NAME=mipi-panel.dtbo \
           WALKMAN_PANEL_OVERLAY_FILE="$PWD/dtbs/overlays/mipi-panel.dtbo" \
           build/build.sh game-console-r35s "$VARIANT"

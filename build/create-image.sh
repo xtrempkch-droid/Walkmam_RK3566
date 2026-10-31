@@ -28,6 +28,15 @@ EARLYCON=${WALKMAN_EARLYCON:-0xfe660000}
 DTBS_GLOB=${WALKMAN_DTBS_GLOB:-rk3566-powkiddy-*.dtb}
 PANEL_OVERLAY_NAME=${WALKMAN_PANEL_OVERLAY_NAME:-}
 PANEL_OVERLAY_FILE=${WALKMAN_PANEL_OVERLAY_FILE:-}
+# Onde o DTB mora na particao de boot. Padrao 'dtbs' (subpasta, como no RK3566).
+# O U-Boot de fabricante do RK3326 (2017.09) so carrega o FDT da RAIZ: para
+# aquela placa use WALKMAN_FDT_DIR="" . O DTB tambem e copiado para a raiz em
+# qualquer caso (custa 68 KB e salva o boot).
+FDT_DIR=${WALKMAN_FDT_DIR-dtbs}
+# Rotulo do extlinux. O parser do U-Boot de fabricante e fragil (o proprio
+# README deles avisa que espaco depois do caminho do dtb quebra o boot), entao
+# para o RK3326 use um rotulo simples (WALKMAN_LABEL=walkmam).
+LABEL_NAME=${WALKMAN_LABEL-"Walkmam ($DEVICE - $VARIANT)"}
 BOOT_MOUNT=
 ROOT_MOUNT=
 LOOP_DEV=
@@ -185,11 +194,19 @@ if [[ -n $_real_partuuid && $_real_partuuid != "$ROOT_UUID" ]]; then
     exit 1
 fi
 cp "$KERNEL_DIR/arch/arm64/boot/Image" "$BOOT_MOUNT/Image"
-mkdir -p "$BOOT_MOUNT/dtbs" "$BOOT_MOUNT/extlinux"
-for dtb in "$KERNEL_DIR"/arch/arm64/boot/dts/rockchip/$DTBS_GLOB; do
-    [[ -f $dtb ]] && cp "$dtb" "$BOOT_MOUNT/dtbs/"
-done
-cp "$DTB_FILE" "$BOOT_MOUNT/dtbs/$DTB_NAME"
+mkdir -p "$BOOT_MOUNT/extlinux"
+if [[ -n $FDT_DIR ]]; then
+    mkdir -p "$BOOT_MOUNT/$FDT_DIR"
+    FDT_PATH="/$FDT_DIR/$DTB_NAME"
+    for dtb in "$KERNEL_DIR"/arch/arm64/boot/dts/rockchip/$DTBS_GLOB; do
+        [[ -f $dtb ]] && cp "$dtb" "$BOOT_MOUNT/$FDT_DIR/"
+    done
+else
+    FDT_PATH="/$DTB_NAME"
+fi
+cp "$DTB_FILE" "$BOOT_MOUNT$FDT_PATH"
+# copia tambem na raiz: o U-Boot de fabricante do RK3326 carrega o FDT da raiz
+cp "$DTB_FILE" "$BOOT_MOUNT/$DTB_NAME"
 
 # Overlay de painel opcional (RK3326: o DTB base nao descreve a sequencia de
 # init do painel; o overlay aplica a variante certa sem recompilar o DTB).
@@ -275,9 +292,9 @@ if [[ $DEVICE == powkiddy-x55 ]]; then
 fi
 
 cat > "$BOOT_MOUNT/extlinux/extlinux.conf" << BOOTCFG
-LABEL Walkmam ($DEVICE - $VARIANT)
+LABEL $LABEL_NAME
     KERNEL /Image
-    FDT /dtbs/$DTB_NAME$OVERLAY_LINE
+    FDT $FDT_PATH$OVERLAY_LINE
     APPEND quiet rootwait earlycon=uart8250,mmio32,$EARLYCON console=ttyS2,1500000n8 console=tty1 root=PARTUUID=$ROOT_UUID rw$BOOT_MARKER
 BOOTCFG
 

@@ -829,3 +829,26 @@ outro commit resolve sem force-push na branch. Para conferir se o build nasceu, 
   se a tela ligar, o próximo item é áudio/botões no hardware. Para retomar o
   loader limpo: console serial (ver §11.4 do doc) ou um U-Boot com `bootcmd` de
   rockusb para dar sinal visível no PC.
+
+### 2026-10-30 (5) — DeepSeek (`dtb load fail` no boot: FDT tem que ficar na raiz)
+
+- **Sintoma no aparelho (imagem nossa, loader oficial):** o U-Boot sobe e para em
+  **`dtb load fail`**.
+- **Causa:** o `create-image.sh` punha o DTB em `/dtbs/<nome>.dtb` (layout do
+  RK3566, onde o U-Boot é mainline). O U-Boot 2017.09 de fabricante carrega o FDT
+  da **raiz** — é o "parser pobre" que o README da ROCKNIX avisa que quebra até
+  com espaço sobrando. O `LABEL` com parênteses/espaços era o segundo risco.
+- **Correção (`build/create-image.sh`, retrocompatível):** knobs
+  `WALKMAN_FDT_DIR` (padrão `dtbs`; vazio = raiz) e `WALKMAN_LABEL` (padrão
+  `Walkmam (<device> - <variant>)`). O DTB passou a ser copiado **sempre também
+  para a raiz**. No workflow do RK3326: `WALKMAN_FDT_DIR=` e
+  `WALKMAN_LABEL=walkmam`.
+- **DTBs novos que o usuário mandou:** `J:\boot\rk3326-rg351mp-linux.dtb` é o
+  **mesmo** R35S/R36S "fix by lxc" (`elida,kd35t133`, 52x70 mm, 4 lanes,
+  `flags 0x0a03`, init de 773 bytes/155 passos) que já tínhamos — só com o nome
+  que a KNULLI usa; não acrescenta nada, mas confirma o painel.
+  `J:\rk3326-odroidgo2-linux.dtb` é do **ODROID-GO2** (480x320, 1 lane,
+  `odroidgo2-joypad`) e não serve.
+- **Pendente / próximo:** rodar `target=imagem` (loader=oficial) e gravar; o
+  `extlinux.conf` agora sai com `FDT /rk3326-gameconsole-r36s.dtb` e
+  `LABEL walkmam`, igual ao que a ROCKNIX usa neste aparelho.
