@@ -801,3 +801,31 @@ outro commit resolve sem force-push na branch. Para conferir se o build nasceu, 
   funcione com `instalar-loader.sh` (serial 1500000) — decide se o U-Boot
   mainline inicializa esta placa; (2) só depois `target=imagem`; (3) se o
   singleadc não compilar em 6.12, o log diz e o ajuste é localizado.
+
+### 2026-10-30 (4) — DeepSeek (loader mainline REPROVADO no aparelho; pipeline usa o oficial)
+
+- **Teste no hardware (feito pelo usuário):** imagem oficial do ROCKNIX com
+  **só** os 16 MiB do loader trocados pelo mainline (`idbloader.img` 120 KiB com
+  TPL `px30_ddr_333MHz_v2.12` + `u-boot.itb` 1,1 MiB com `px30_bl31_v1.37` e
+  `odroid-go2`), imagem `sha256 488c4e55…`, gravação conferida por releitura.
+  **Resultado: tela preta, sem rede/USB, nenhum sinal de vida** → o kernel nunca
+  rodou, então a falha é antes dele.
+- **Leitura honesta:** não prova que o U-Boot mainline rodou (sem serial não dá
+  para separar DDR/TPL de falha no `sysboot`); prova que esse caminho não chega a
+  executar o kernel. O `idbloader` do fabricante **não é rkbin** (`3b 8c dc fc…`,
+  sem magic `RK33`): o DDR init é do miniloader deles, ajustado ao lote —
+  hipótese principal de por que o blob genérico `px30_ddr` não serve.
+- **Decisão:** o pipeline passou a usar o **loader oficial** por padrão
+  (`loader=oficial`): baixa `ROCKNIX-RK3326.aarch64-20261001-a.img.gz` (sha256
+  `d693d2bb…` pinado), confere e extrai os 16 MiB iniciais (`idbloader.img` =
+  32 KiB..8 MiB, `u-boot.itb` = 8..16 MiB). `loader=mainline` continua como
+  opção de experimento. O asset agora leva o loader no nome
+  (`rk3326-r36s-<variant>-<loader>-sdcard.img.gz`).
+- **Também nesta rodada:** correções no CI que custaram 2 runs — `ARCH_PX30` não
+  existe no arm64 (é `ARCH_ROCKCHIP`) e `DRM_ROCKCHIP=y` exige `DRM=y` (senão o
+  Kconfig rebaixa para `m`); e `rm` sem `sudo` do `qemu-aarch64-static` derrubava
+  o rootfs na última linha. Com isso o kernel (21 min) e o rootfs passaram.
+- **Pendente / próximo:** rodar `target=imagem` com `loader=oficial` e gravar;
+  se a tela ligar, o próximo item é áudio/botões no hardware. Para retomar o
+  loader limpo: console serial (ver §11.4 do doc) ou um U-Boot com `bootcmd` de
+  rockusb para dar sinal visível no PC.

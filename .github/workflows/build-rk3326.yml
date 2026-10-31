@@ -35,6 +35,13 @@ on:
           - kodi
           - retroarch
         default: kodi
+      loader:
+        description: "Loader: oficial (o da ROCKNIX, que liga) ou mainline (em teste, NAO liga no aparelho)"
+        type: choice
+        options:
+          - oficial
+          - mainline
+        default: oficial
       baudrate:
         description: "Baudrate do console do U-Boot (R36S = 1500000)"
         default: "1500000"
@@ -51,6 +58,7 @@ env:
   TARGET: ${{ github.event.inputs.target }}
   VARIANT: ${{ github.event.inputs.variant }}
   BAUD: ${{ github.event.inputs.baudrate }}
+  LOADER: ${{ github.event.inputs.loader }}
 
 jobs:
   build-rk3326:
@@ -69,7 +77,43 @@ jobs:
           device-tree-compiler python3 python3-dev python3-setuptools python3-pyelftools \
           debootstrap qemu-user-static parted kpartx dosfstools e2fsprogs rsync
 
+    - name: Obter loader oficial do ROCKNIX (16 MiB iniciais)
+      if: github.event.inputs.loader == 'oficial'
+      run: |
+        # O loader de fabricante (U-Boot 2017.09) vive nos 16 MiB iniciais do
+        # disco: idbloader na região 32 KiB..8 MiB e uboot.img de 8..16 MiB.
+        # O U-Boot mainline (odroid-go2 + px30 DDR) FOI TESTADO no aparelho e
+        # NÃO liga (tela preta, sem rede) — ver docs/r35s-rk3326.md §12. Por
+        # isso o padrão é reutilizar o loader oficial, pinado por sha256.
+        URL="https://github.com/ROCKNIX/distribution/releases/download/20261001/ROCKNIX-RK3326.aarch64-20261001-a.img.gz"
+        SHA="d693d2bb3cd854a54a1c742c9952f20892c8344188c696beea00c77b5bd54392"
+        echo "--> baixando $URL"
+        curl -fL --retry 3 --retry-delay 5 -o rocknix.img.gz "$URL"
+        echo "$SHA  rocknix.img.gz" | sha256sum -c -
+        mkdir -p uboot
+        python3 - <<'PY'
+        import gzip
+        LIMITE = 16 * 1024 * 1024
+        buf = bytearray()
+        with gzip.open("rocknix.img.gz", "rb") as f:
+            while len(buf) < LIMITE:
+                b = f.read(1 << 20)
+                if not b:
+                    break
+                buf += b
+        if len(buf) < LIMITE:
+            raise SystemExit("imagem menor que 16 MiB: %d" % len(buf))
+        regiao = bytes(buf[:LIMITE])
+        open("uboot/idbloader.img", "wb").write(regiao[32768:8388608])
+        open("uboot/u-boot.itb", "wb").write(regiao[8388608:16777216])
+        print("idbloader.img %d bytes | u-boot.itb %d bytes" %
+              (8388608 - 32768, 16777216 - 8388608))
+        PY
+        rm -f rocknix.img.gz
+        sha256sum uboot/idbloader.img uboot/u-boot.itb
+
     - name: Fetch U-Boot and rkbin (commits fixos, os mesmos do build.yml)
+      if: github.event.inputs.loader == 'mainline'
       run: |
         UBOOT_COMMIT=0a55b098d6f5f6bafa84fc2f18b433dd167bf729
         RKBIN_COMMIT=3e288fe814e059dd06833495f845cab04ac20a5c
@@ -95,6 +139,7 @@ jobs:
         echo "rkbin em $(git -C rkbin rev-parse HEAD)"
 
     - name: Build U-Boot mainline (odroid-go2) for RK3326
+      if: github.event.inputs.loader == 'mainline'
       run: |
         cd uboot
         export ARCH=arm64
@@ -161,6 +206,7 @@ jobs:
         echo "idbloader: $(stat -c%s idbloader.img) bytes | u-boot.itb: $(stat -c%s u-boot.itb) bytes"
 
     - name: Empacotar loader
+      if: github.event.inputs.loader == 'mainline'
       run: |
         mkdir -p out
         cp uboot/idbloader.img out/
@@ -183,6 +229,7 @@ jobs:
         cd out && sha256sum idbloader.img u-boot.itb > SHA256SUMS && cat SHA256SUMS
 
     - name: Upload loader artifact
+      if: github.event.inputs.loader == 'mainline'
       uses: actions/upload-artifact@v4
       with:
         name: rk3326-loader-odroid-go2
@@ -352,7 +399,7 @@ jobs:
           WALKMAN_ROOTFS_DIR="$PWD/rootfs" \
           WALKMAN_OUTPUT_DIR="$PWD/img" \
           WALKMAN_DTB_SOURCE="$PWD/devices/game-console-r35s/dts/rk3326-gameconsole-r36s.dtb" \
-          WALKMAN_IMAGE_NAME="rk3326-r36s-${VARIANT}-sdcard.img" \
+          WALKMAN_IMAGE_NAME="rk3326-r36s-${VARIANT}-${LOADER}-sdcard.img" \
           WALKMAN_EARLYCON=0xff160000 \
           WALKMAN_DTBS_GLOB="rk3326-*.dtb" \
           WALKMAN_PANEL_OVERLAY_NAME=mipi-panel.dtbo \
